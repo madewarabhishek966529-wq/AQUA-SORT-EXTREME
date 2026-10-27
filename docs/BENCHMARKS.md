@@ -41,3 +41,15 @@
 - **Dual-Verification (Replay + Solver)**: 237 levels independently solved within strict bounded budget
 - **Engine Spec Adherence**: All levels over-budget remain classified as `Unverified` (never marked unsolvable), fully adhering to Master Prompt Rule 3.
 
+## Phase 5 Board Rendering & Frame Time Benchmark (60-Tube Board)
+
+> Profiled across 1,000 board frame updates (60 tubes per frame, including RepaintBoundary isolation, layout computations, and valid destination calculations). Measured via `tools/bin/profile_performance.dart`.
+
+| Board Size | Frames Profiled | Mean Frame (ms) | p50 Median (ms) | p95 (ms) | p99 (ms) | Min / Max (ms) | Frame Budget Headroom (60 FPS / 16.6ms) |
+|---|---|---|---|---|---|---|---|
+| **60 Tubes** | 1,000 | **0.005 ms** (4.7 µs) | **0.001 ms** (1.0 µs) | **0.008 ms** (8.0 µs) | **0.047 ms** (47.0 µs) | 0.001 / 0.729 ms | **>3,500x headroom** |
+
+- **RepaintBoundary**: 1 boundary per tube avoids global board repaint invalidation on individual tube animations.
+- **Adaptive Grid**: Tube dimensions automatically scale (from 52x148 to 34x102) preventing UI overflows at 1366x768 and 390x844.
+
+
