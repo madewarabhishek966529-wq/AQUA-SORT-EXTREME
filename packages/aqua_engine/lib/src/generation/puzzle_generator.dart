@@ -182,6 +182,12 @@ class PuzzleGenerator {
             }
           }
 
+          // Prune reverse moves that transfer an entire full single-colored tube
+          // into an empty tube, as this merely renames tubes and leaves the state solved.
+          if (tubeB.isFull && tubeB.isSingleColor && tubeA.isEmpty && j == tubeB.capacity) {
+            continue;
+          }
+
           // Condition 4: after removing j units from B, B is empty or new top is color
           final remainingB = tubeB.units.length - j;
           if (remainingB > 0 && tubeB.units[remainingB - 1] != color) {

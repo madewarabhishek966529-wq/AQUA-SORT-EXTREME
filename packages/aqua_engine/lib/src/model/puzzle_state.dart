@@ -25,6 +25,10 @@ class PuzzleState {
   /// Number of currently empty tubes.
   int get emptyTubeCount => tubes.where((t) => t.isEmpty).length;
 
+  /// Number of completed, fully-sorted single-colored tubes.
+  int get filledColorTubeCount =>
+      tubes.where((t) => t.isFull && t.isSingleColor).length;
+
   /// Total count of liquid units across all tubes.
   int get totalUnits => tubes.fold<int>(0, (sum, t) => sum + t.units.length);
 
