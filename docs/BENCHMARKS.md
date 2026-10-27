@@ -12,14 +12,14 @@
 
 | Tubes | Levels | Solved / Replayed | Mean Gen (ms) | p50 (ms) | p95 (ms) | p99 (ms) | Avg Solution Steps | Avg Fragmentation |
 |---|---|---|---|---|---|---|---|---|
-| 8 | 250 | 250 / 250 (100%) | 0.84 | 0.47 | 1.46 | 9.70 | 17.6 | 1.59 |
-| 20 | 250 | 250 / 250 (100%) | 3.51 | 3.39 | 4.68 | 5.26 | 39.9 | 1.58 |
-| 40 | 250 | 250 / 250 (100%) | 16.86 | 16.45 | 20.28 | 22.20 | 73.0 | 1.47 |
-| 60 | 250 | 250 / 250 (100%) | 43.04 | 42.16 | 54.34 | 57.57 | 99.3 | 1.39 |
+| 8 | 250 | 250 / 250 (100%) | 0.99 | 0.51 | 3.34 | 9.48 | 17.1 | 1.56 |
+| 20 | 250 | 250 / 250 (100%) | 4.01 | 3.63 | 6.72 | 7.93 | 36.6 | 1.60 |
+| 40 | 250 | 250 / 250 (100%) | 20.59 | 19.84 | 28.55 | 39.74 | 68.8 | 1.48 |
+| 60 | 250 | 250 / 250 (100%) | 50.51 | 49.34 | 62.12 | 86.83 | 94.0 | 1.39 |
 
 ### Verification & Replay
 - **Total Levels Tested**: 1,000
 - **Replay Success Rate**: 1,000 / 1,000 (100.0%)
-- **Total Suite Time**: 16.11 seconds
+- **Total Suite Time**: 19.10 seconds
 - **Rule Adherence**: 100% of reverse moves strictly inverted into legal forward moves verified by `MoveValidator.apply`.
 
