@@ -17,6 +17,9 @@ class GameState {
   final GeneratedLevel currentLevel;
   final int levelNumber;
   final bool autoPour;
+  final Move? hintMove;
+  final bool isCalculatingHint;
+  final String? hintMessage;
 
   const GameState({
     required this.puzzleState,
@@ -31,6 +34,9 @@ class GameState {
     required this.currentLevel,
     required this.levelNumber,
     this.autoPour = true,
+    this.hintMove,
+    this.isCalculatingHint = false,
+    this.hintMessage,
   });
 
   GameState copyWith({
@@ -49,6 +55,11 @@ class GameState {
     GeneratedLevel? currentLevel,
     int? levelNumber,
     bool? autoPour,
+    Move? hintMove,
+    bool clearHint = false,
+    bool? isCalculatingHint,
+    String? hintMessage,
+    bool clearHintMessage = false,
   }) {
     return GameState(
       puzzleState: puzzleState ?? this.puzzleState,
@@ -66,6 +77,9 @@ class GameState {
       currentLevel: currentLevel ?? this.currentLevel,
       levelNumber: levelNumber ?? this.levelNumber,
       autoPour: autoPour ?? this.autoPour,
+      hintMove: clearHint ? null : (hintMove ?? this.hintMove),
+      isCalculatingHint: isCalculatingHint ?? this.isCalculatingHint,
+      hintMessage: clearHintMessage ? null : (hintMessage ?? this.hintMessage),
     );
   }
 }
@@ -219,6 +233,35 @@ class GameController extends StateNotifier<GameState> {
     if (state.shakingTubeIndex != null) {
       state = state.copyWith(clearShaking: true);
     }
+  }
+
+  /// Asynchronously calculates and highlights a hint move using HintPlanner.
+  Future<void> requestHint() async {
+    if (state.isCalculatingHint || state.isInputLocked || state.isWon) return;
+
+    state = state.copyWith(isCalculatingHint: true, clearHint: true);
+
+    const hintPlanner = HintPlanner();
+    final hint = await hintPlanner.getHint(state.puzzleState);
+
+    if (hint.isAvailable && hint.nextMove != null) {
+      state = state.copyWith(
+        hintMove: hint.nextMove,
+        isCalculatingHint: false,
+        hintMessage: hint.message,
+      );
+    } else {
+      state = state.copyWith(
+        clearHint: true,
+        isCalculatingHint: false,
+        hintMessage: hint.message,
+      );
+    }
+  }
+
+  /// Clears active hint.
+  void clearHint() {
+    state = state.copyWith(clearHint: true, clearHintMessage: true);
   }
 }
 

@@ -43,9 +43,9 @@ class Solved extends SolveResult {
 
   const Solved({
     required this.path,
-    required int nodesExpanded,
-    required Duration elapsed,
-  }) : super(nodesExpanded: nodesExpanded, elapsed: elapsed);
+    required super.nodesExpanded,
+    required super.elapsed,
+  });
 
   @override
   Map<String, dynamic> toJson() => {
@@ -66,9 +66,9 @@ class Unverified extends SolveResult {
 
   const Unverified({
     required this.reason,
-    required int nodesExpanded,
-    required Duration elapsed,
-  }) : super(nodesExpanded: nodesExpanded, elapsed: elapsed);
+    required super.nodesExpanded,
+    required super.elapsed,
+  });
 
   @override
   Map<String, dynamic> toJson() => {
@@ -86,9 +86,9 @@ class Unverified extends SolveResult {
 /// The state space was exhaustively searched and no solution exists.
 class ProvenUnsolvable extends SolveResult {
   const ProvenUnsolvable({
-    required int nodesExpanded,
-    required Duration elapsed,
-  }) : super(nodesExpanded: nodesExpanded, elapsed: elapsed);
+    required super.nodesExpanded,
+    required super.elapsed,
+  });
 
   @override
   Map<String, dynamic> toJson() => {

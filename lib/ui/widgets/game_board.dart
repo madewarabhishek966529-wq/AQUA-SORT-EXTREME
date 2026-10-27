@@ -158,6 +158,17 @@ class _GameBoardState extends ConsumerState<GameBoard>
                       final tube = puzzleState.tubes[index];
                       final isSelected = gameState.selectedTubeIndex == index;
                       final isShaking = gameState.shakingTubeIndex == index;
+                      final isHintFrom = gameState.hintMove?.from == index;
+                      final isHintTo = gameState.hintMove?.to == index;
+
+                      Color? glowColor;
+                      if (isSelected) {
+                        glowColor = GameTheme.primaryCyan;
+                      } else if (isHintFrom) {
+                        glowColor = GameTheme.accentGold;
+                      } else if (isHintTo) {
+                        glowColor = GameTheme.accentGreen;
+                      }
 
                       // Calculate shake horizontal offset
                       var shakeOffset = 0.0;
@@ -169,8 +180,8 @@ class _GameBoardState extends ConsumerState<GameBoard>
                       var liftOffset = 0.0;
                       var tiltAngle = 0.0;
 
-                      if (isSelected) {
-                        liftOffset = -18.0; // Selected lift
+                      if (isSelected || isHintFrom) {
+                        liftOffset = -18.0; // Selected or hint lift
                       } else if (_currentAnimatingPour != null &&
                           _currentAnimatingPour!.from == index) {
                         final animVal = _pourAnimController.value;
@@ -201,7 +212,8 @@ class _GameBoardState extends ConsumerState<GameBoard>
                               child: CustomPaint(
                                 painter: TubePainter(
                                   tube: tube,
-                                  isSelected: isSelected,
+                                  isSelected: isSelected || isHintFrom || isHintTo,
+                                  glowColor: glowColor,
                                   shakeOffset: shakeOffset,
                                   tiltAngle: tiltAngle,
                                 ),

@@ -85,15 +85,30 @@ class TopBar extends ConsumerWidget {
               onPressed: canUndo ? () => controller.undo() : null,
             ),
 
-            // Hint Button (Disabled until Phase 3)
+            // Hint Button
             IconButton(
               key: const Key('hint_button'),
-              icon: Icon(
-                Icons.lightbulb_outline_rounded,
-                color: GameTheme.textMuted.withValues(alpha: 0.3),
-              ),
-              tooltip: 'Hint (Available in Phase 3)',
-              onPressed: null, // Disabled per spec until Phase 3
+              icon: gameState.isCalculatingHint
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(GameTheme.accentGold),
+                      ),
+                    )
+                  : Icon(
+                      Icons.lightbulb_rounded,
+                      color: gameState.hintMove != null
+                          ? GameTheme.accentGold
+                          : (gameState.isInputLocked || gameState.isWon
+                              ? GameTheme.textMuted.withValues(alpha: 0.3)
+                              : GameTheme.accentGold.withValues(alpha: 0.9)),
+                    ),
+              tooltip: 'Hint',
+              onPressed: (gameState.isInputLocked || gameState.isWon || gameState.isCalculatingHint)
+                  ? null
+                  : () => controller.requestHint(),
             ),
           ],
         ),
