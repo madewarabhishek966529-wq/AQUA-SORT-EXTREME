@@ -7,13 +7,13 @@ void main() {
       final stateA = PuzzleState([
         TubeState([1, 2, 3, 4]),
         TubeState([2, 1, 4, 3]),
-        const TubeState.empty(),
+        TubeState.empty(),
         TubeState([3, 4, 1, 2]),
       ]);
 
       // Permuted order of the exact same tubes
       final stateB = PuzzleState([
-        const TubeState.empty(),
+        TubeState.empty(),
         TubeState([3, 4, 1, 2]),
         TubeState([1, 2, 3, 4]),
         TubeState([2, 1, 4, 3]),
@@ -25,7 +25,7 @@ void main() {
       final stateC = PuzzleState([
         TubeState([1, 2, 3, 4]),
         TubeState([2, 1, 4, 4]), // changed last unit
-        const TubeState.empty(),
+        TubeState.empty(),
         TubeState([3, 4, 1, 2]),
       ]);
       expect(stateA.canonicalKey(), isNot(equals(stateC.canonicalKey())));
@@ -35,7 +35,7 @@ void main() {
       final state = PuzzleState([
         TubeState([1, 2, 3, 4]),
         TubeState([2, 2]),
-        const TubeState.empty(),
+        TubeState.empty(),
         TubeState([3, 3, 3, 3]),
       ]);
 
@@ -48,7 +48,7 @@ void main() {
       final state = PuzzleState([
         TubeState([1, 2, 3, 4]),
         TubeState([4, 3, 2, 1]),
-        const TubeState.empty(),
+        TubeState.empty(),
       ]);
 
       final json = state.toJson();
