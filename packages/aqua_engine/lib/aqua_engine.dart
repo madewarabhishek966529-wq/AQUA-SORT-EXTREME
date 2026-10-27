@@ -10,3 +10,8 @@ export 'src/model/move.dart';
 export 'src/model/puzzle_state.dart';
 export 'src/model/tube_state.dart';
 export 'src/rules/move_validator.dart';
+export 'src/solving/cancel_token.dart';
+export 'src/solving/hint_planner.dart';
+export 'src/solving/puzzle_solver.dart';
+export 'src/solving/solve_budget.dart';
+export 'src/solving/solve_result.dart';
