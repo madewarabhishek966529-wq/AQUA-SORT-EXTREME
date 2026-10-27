@@ -1,0 +1,11 @@
+name: aqua_tools
+description: Benchmarks and CLI tools for Aqua Sort.
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  aqua_engine:
+    path: ../packages/aqua_engine
