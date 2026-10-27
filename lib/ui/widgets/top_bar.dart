@@ -37,7 +37,7 @@ class TopBar extends ConsumerWidget {
             IconButton(
               icon: const Icon(Icons.home_rounded, color: GameTheme.textBright),
               tooltip: 'Home',
-              onPressed: onHomePressed,
+              onPressed: onHomePressed ?? () => Navigator.of(context).maybePop(),
             ),
 
             // Level Info Title

@@ -1,21 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'ui/screens/game_screen.dart';
+import 'services/achievement_manager.dart';
+import 'services/save_repository.dart';
+import 'services/settings_service.dart';
+import 'services/sqlite_save_repository.dart';
+import 'ui/screens/main_menu_screen.dart';
 import 'ui/theme/game_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final repository = SqliteSaveRepository();
+  await repository.init();
+
+  final settingsService = await SettingsService.create();
+
+  final achievementManager = AchievementManager(repository: repository);
+  await achievementManager.init();
+
   runApp(
-    const ProviderScope(
-      child: AquaSortApp(),
+    ProviderScope(
+      child: AquaSortApp(
+        repository: repository,
+        settingsService: settingsService,
+        achievementManager: achievementManager,
+      ),
     ),
   );
 }
 
 /// Root widget for Aqua Sort: Extreme application.
 class AquaSortApp extends StatelessWidget {
-  const AquaSortApp({super.key});
+  final SaveRepository repository;
+  final SettingsService settingsService;
+  final AchievementManager achievementManager;
+
+  const AquaSortApp({
+    super.key,
+    required this.repository,
+    required this.settingsService,
+    required this.achievementManager,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +49,11 @@ class AquaSortApp extends StatelessWidget {
       title: 'Aqua Sort: Extreme',
       debugShowCheckedModeBanner: false,
       theme: GameTheme.darkTheme,
-      home: const GameScreen(),
+      home: MainMenuScreen(
+        repository: repository,
+        settingsService: settingsService,
+        achievementManager: achievementManager,
+      ),
     );
   }
 }

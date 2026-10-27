@@ -1,6 +1,7 @@
 import 'package:aqua_engine/aqua_engine.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/save_repository.dart';
 import 'pour_event.dart';
 
 /// State of the active game session.
@@ -262,6 +263,24 @@ class GameController extends StateNotifier<GameState> {
   /// Clears active hint.
   void clearHint() {
     state = state.copyWith(clearHint: true, clearHintMessage: true);
+  }
+
+  /// Restores an in-progress game state from a saved snapshot.
+  void restoreSnapshot(GameSnapshot snapshot) {
+    state = state.copyWith(
+      puzzleState: snapshot.currentState,
+      history: snapshot.history,
+      moves: snapshot.moves,
+      elapsedSeconds: snapshot.elapsedSeconds,
+      isWon: snapshot.currentState.isSolved,
+      levelNumber: snapshot.levelNumber,
+      clearSelected: true,
+      clearShaking: true,
+      clearActivePour: true,
+      clearHint: true,
+      clearHintMessage: true,
+      isInputLocked: false,
+    );
   }
 }
 

@@ -19,7 +19,33 @@ class GameTheme {
 
   /// 20 vibrant, distinct liquid base colors with smooth pairing.
   /// Generates additional deterministic colors if colorId > 20.
-  static Color getLiquidColor(int colorId) {
+  /// If [colorblind] is true, uses the high-contrast Okabe-Ito accessible palette.
+  static Color getLiquidColor(int colorId, {bool colorblind = false}) {
+    if (colorblind) {
+      // Okabe-Ito & Tol high-contrast colorblind-safe palette
+      const cbPalette = <Color>[
+        Color(0xFF0072B2), // 1: Deep Blue
+        Color(0xFFE69F00), // 2: Amber Orange
+        Color(0xFF56B4E9), // 3: Sky Blue
+        Color(0xFF009E73), // 4: Bluish Green
+        Color(0xFFF0E442), // 5: Pale Yellow
+        Color(0xFFD55E00), // 6: Vermilion Red
+        Color(0xFFCC79A7), // 7: Reddish Purple
+        Color(0xFF332288), // 8: Indigo
+        Color(0xFF117733), // 9: Forest Green
+        Color(0xFF44AA99), // 10: Teal
+        Color(0xFF88CCEE), // 11: Light Cyan
+        Color(0xFFDDCC77), // 12: Sand
+        Color(0xFFCC6677), // 13: Rose
+        Color(0xFFAA4499), // 14: Orchid Purple
+        Color(0xFF882255), // 15: Wine
+        Color(0xFF999933), // 16: Olive
+      ];
+      if (colorId >= 1 && colorId <= cbPalette.length) {
+        return cbPalette[colorId - 1];
+      }
+    }
+
     const palette = <Color>[
       Color(0xFF00E5FF), // 1: Vibrant Cyan
       Color(0xFFFF1744), // 2: Crimson Red

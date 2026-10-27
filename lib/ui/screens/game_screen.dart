@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/game_controller.dart';
+import '../../services/audio_service.dart';
+import '../../services/settings_service.dart';
 import '../theme/game_theme.dart';
 import '../widgets/bottom_bar.dart';
 import '../widgets/game_board.dart';
@@ -38,6 +40,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameControllerProvider);
+    final settingsService = ref.watch(settingsServiceProvider);
+    final settings = settingsService.settings;
 
     return Scaffold(
       backgroundColor: GameTheme.backgroundDark,
@@ -45,10 +49,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         children: [
           // Main layout: Top Bar, Board, Bottom Bar
           Column(
-            children: const [
-              TopBar(),
-              Expanded(child: GameBoard()),
-              BottomBar(),
+            children: [
+              const TopBar(),
+              Expanded(
+                child: GameBoard(
+                  showColorblindCues: settings.colorblindPalette,
+                  colorblindPalette: settings.colorblindPalette,
+                  reducedMotion: settings.reducedMotion,
+                  audioService: AudioService(settingsService: settingsService),
+                ),
+              ),
+              const BottomBar(),
             ],
           ),
 

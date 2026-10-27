@@ -1,13 +1,18 @@
+import 'dart:math';
 import 'package:aqua_engine/aqua_engine.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/game_theme.dart';
 
 /// CustomPainter rendering a glass test tube with liquid layers, glass rim,
-/// highlights, and fluid meniscus.
+/// highlights, fluid meniscus, and accessible colorblind cues.
 class TubePainter extends CustomPainter {
   final TubeState tube;
   final bool isSelected;
+  final bool isFocused;
+  final bool isValidDestination;
+  final bool showColorblindCues;
+  final bool colorblindPalette;
   final double shakeOffset;
   final double tiltAngle; // in radians, for pouring animation
   final Color? glowColor;
@@ -15,6 +20,10 @@ class TubePainter extends CustomPainter {
   TubePainter({
     required this.tube,
     this.isSelected = false,
+    this.isFocused = false,
+    this.isValidDestination = false,
+    this.showColorblindCues = false,
+    this.colorblindPalette = false,
     this.shakeOffset = 0.0,
     this.tiltAngle = 0.0,
     this.glowColor,
@@ -45,7 +54,7 @@ class TubePainter extends CustomPainter {
     final bodyHeight = h - bodyTop;
     final radius = w / 2;
 
-    // 1. Draw Selection Glow if selected
+    // 1. Draw Glows (Selection, Valid Destination, Keyboard Focus)
     if (isSelected) {
       final glowPaint = Paint()
         ..color = (glowColor ?? GameTheme.primaryCyan).withValues(alpha: 0.4)
@@ -58,6 +67,32 @@ class TubePainter extends CustomPainter {
         bottomRight: Radius.circular(radius + 4),
       );
       canvas.drawRRect(glowRect, glowPaint);
+    } else if (isValidDestination) {
+      // Valid pour destination glow
+      final validPaint = Paint()
+        ..color = GameTheme.accentGreen.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+      final validRect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(-3, 0, w + 6, h + 3),
+        topLeft: Radius.circular(radius),
+        topRight: Radius.circular(radius),
+        bottomLeft: Radius.circular(radius + 3),
+        bottomRight: Radius.circular(radius + 3),
+      );
+      canvas.drawRRect(validRect, validPaint);
+    } else if (isFocused) {
+      // Keyboard navigation focus ring
+      final focusPaint = Paint()
+        ..color = GameTheme.accentGold.withValues(alpha: 0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      final focusRect = RRect.fromRectAndCorners(
+        Rect.fromLTWH(-3, 0, w + 6, h + 3),
+        topLeft: Radius.circular(radius),
+        topRight: Radius.circular(radius),
+        bottomLeft: Radius.circular(radius + 3),
+        bottomRight: Radius.circular(radius + 3),
+      );
+      canvas.drawRRect(focusRect, focusPaint);
     }
 
     // Tube body outer path (cylindrical with hemispherical rounded bottom)
@@ -89,7 +124,10 @@ class TubePainter extends CustomPainter {
 
       for (var i = 0; i < tube.units.length; i++) {
         final colorId = tube.units[i];
-        final liquidColor = GameTheme.getLiquidColor(colorId);
+        final liquidColor = GameTheme.getLiquidColor(
+          colorId,
+          colorblind: colorblindPalette,
+        );
 
         // Layer bottom to top (i = 0 is bottom)
         final layerBottom = h - (i * unitHeight);
@@ -109,6 +147,13 @@ class TubePainter extends CustomPainter {
           ).createShader(liquidRect);
 
         canvas.drawRect(liquidRect, liquidPaint);
+
+        // Accessible non-color cues: symbol glyph per color ID
+        if (showColorblindCues) {
+          final glyphCenter = Offset(w / 2, layerTop + unitHeight / 2);
+          final glyphSize = min(w * 0.35, unitHeight * 0.45);
+          _drawColorblindGlyph(canvas, colorId, glyphCenter, glyphSize);
+        }
 
         // Meniscus / surface curve at the top of the highest liquid layer
         if (i == tube.units.length - 1) {
@@ -196,8 +241,114 @@ class TubePainter extends CustomPainter {
   bool shouldRepaint(covariant TubePainter oldDelegate) {
     return oldDelegate.tube != tube ||
         oldDelegate.isSelected != isSelected ||
+        oldDelegate.isFocused != isFocused ||
+        oldDelegate.isValidDestination != isValidDestination ||
+        oldDelegate.showColorblindCues != showColorblindCues ||
+        oldDelegate.colorblindPalette != colorblindPalette ||
         oldDelegate.shakeOffset != shakeOffset ||
         oldDelegate.tiltAngle != tiltAngle ||
         oldDelegate.glowColor != glowColor;
+  }
+
+  /// Renders a crisp mathematical geometric glyph for colorblind accessibility.
+  void _drawColorblindGlyph(
+      Canvas canvas, int colorId, Offset center, double size) {
+    final glyphPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.82)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8;
+
+    final half = size / 2;
+    final r = half * 0.85;
+
+    switch ((colorId - 1) % 12) {
+      case 0: // Circle
+        canvas.drawCircle(center, r, glyphPaint);
+        break;
+      case 1: // Square
+        canvas.drawRect(
+          Rect.fromCenter(
+              center: center, width: size * 0.8, height: size * 0.8),
+          glyphPaint,
+        );
+        break;
+      case 2: // Triangle Up
+        final path = Path()
+          ..moveTo(center.dx, center.dy - r)
+          ..lineTo(center.dx + r, center.dy + r)
+          ..lineTo(center.dx - r, center.dy + r)
+          ..close();
+        canvas.drawPath(path, glyphPaint);
+        break;
+      case 3: // Diamond
+        final path = Path()
+          ..moveTo(center.dx, center.dy - r)
+          ..lineTo(center.dx + r, center.dy)
+          ..lineTo(center.dx, center.dy + r)
+          ..lineTo(center.dx - r, center.dy)
+          ..close();
+        canvas.drawPath(path, glyphPaint);
+        break;
+      case 4: // Plus (+)
+        canvas.drawLine(Offset(center.dx - r, center.dy),
+            Offset(center.dx + r, center.dy), glyphPaint);
+        canvas.drawLine(Offset(center.dx, center.dy - r),
+            Offset(center.dx, center.dy + r), glyphPaint);
+        break;
+      case 5: // X / Saltire
+        final d = r * 0.707;
+        canvas.drawLine(Offset(center.dx - d, center.dy - d),
+            Offset(center.dx + d, center.dy + d), glyphPaint);
+        canvas.drawLine(Offset(center.dx + d, center.dy - d),
+            Offset(center.dx - d, center.dy + d), glyphPaint);
+        break;
+      case 6: // Triangle Down
+        final path = Path()
+          ..moveTo(center.dx, center.dy + r)
+          ..lineTo(center.dx + r, center.dy - r)
+          ..lineTo(center.dx - r, center.dy - r)
+          ..close();
+        canvas.drawPath(path, glyphPaint);
+        break;
+      case 7: // Hexagon
+        final path = Path();
+        for (var k = 0; k < 6; k++) {
+          final angle = k * pi / 3;
+          final x = center.dx + r * cos(angle);
+          final y = center.dy + r * sin(angle);
+          if (k == 0) {
+            path.moveTo(x, y);
+          } else {
+            path.lineTo(x, y);
+          }
+        }
+        path.close();
+        canvas.drawPath(path, glyphPaint);
+        break;
+      case 8: // Star / Asterisk (6 points)
+        for (var k = 0; k < 3; k++) {
+          final angle = k * pi / 3;
+          final dx = r * cos(angle);
+          final dy = r * sin(angle);
+          canvas.drawLine(Offset(center.dx - dx, center.dy - dy),
+              Offset(center.dx + dx, center.dy + dy), glyphPaint);
+        }
+        break;
+      case 9: // Horizontal double bars
+        canvas.drawLine(Offset(center.dx - r, center.dy - 3),
+            Offset(center.dx + r, center.dy - 3), glyphPaint);
+        canvas.drawLine(Offset(center.dx - r, center.dy + 3),
+            Offset(center.dx + r, center.dy + 3), glyphPaint);
+        break;
+      case 10: // Solid filled dot
+        glyphPaint.style = PaintingStyle.fill;
+        canvas.drawCircle(center, r * 0.5, glyphPaint);
+        break;
+      case 11: // Bullseye ring + center dot
+        canvas.drawCircle(center, r, glyphPaint);
+        glyphPaint.style = PaintingStyle.fill;
+        canvas.drawCircle(center, r * 0.35, glyphPaint);
+        break;
+    }
   }
 }

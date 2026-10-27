@@ -1,25 +1,42 @@
 import 'package:aqua_engine/aqua_engine.dart';
 import 'package:aqua_sort_extreme/controllers/game_controller.dart';
-import 'package:aqua_sort_extreme/main.dart';
+import 'package:aqua_sort_extreme/services/achievement_manager.dart';
+import 'package:aqua_sort_extreme/services/settings_service.dart';
+import 'package:aqua_sort_extreme/services/save_repository.dart';
+import 'package:aqua_sort_extreme/ui/screens/game_screen.dart';
+import 'package:aqua_sort_extreme/ui/screens/main_menu_screen.dart';
+import 'package:aqua_sort_extreme/ui/theme/game_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
-  testWidgets('AquaSortApp renders top bar, tubes, and bottom bar',
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
+  testWidgets('GameScreen renders top bar, tubes, and bottom bar',
       (WidgetTester tester) async {
-    // Set desktop window size
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
 
-    await tester.pumpWidget(const ProviderScope(child: AquaSortApp()));
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: GameScreen(),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Verify TopBar elements
     expect(find.textContaining('LEVEL 1'), findsOneWidget);
     expect(find.byKey(const Key('restart_button')), findsOneWidget);
     expect(find.byKey(const Key('undo_button')), findsOneWidget);
+    expect(find.byKey(const Key('hint_button')), findsOneWidget);
 
     // Verify BottomBar elements
     expect(find.byKey(const Key('moves_counter')), findsOneWidget);
@@ -50,12 +67,13 @@ void main() {
             return controller;
           }),
         ],
-        child: const AquaSortApp(),
+        child: const MaterialApp(
+          home: GameScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Find first non-empty tube
     final nonEmptyIndex =
         controller.state.puzzleState.tubes.indexWhere((t) => t.isNotEmpty);
     expect(nonEmptyIndex, greaterThanOrEqualTo(0));
@@ -90,7 +108,9 @@ void main() {
             return controller;
           }),
         ],
-        child: const AquaSortApp(),
+        child: const MaterialApp(
+          home: GameScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -106,7 +126,7 @@ void main() {
 
     // Tap to tube
     await tester.tap(find.byKey(Key('tube_${move.to}')));
-    await tester.pump(); // state committed
+    await tester.pump();
 
     expect(controller.state.moves, equals(1));
 
@@ -117,7 +137,47 @@ void main() {
     await tester.tap(find.byKey(const Key('undo_button')));
     await tester.pumpAndSettle();
 
-    expect(controller.state.moves, equals(1)); // moves recorded
-    expect(controller.state.history, isEmpty); // state restored
+    expect(controller.state.moves, equals(1));
+    expect(controller.state.history, isEmpty);
+  });
+
+  testWidgets('MainMenuScreen renders all hubs and navigation options',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final repository = InMemorySaveRepository();
+    await repository.init();
+    final settingsService = SettingsService();
+    final achievementManager = AchievementManager(repository: repository);
+    await achievementManager.init();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: GameTheme.darkTheme,
+          home: MainMenuScreen(
+            repository: repository,
+            settingsService: settingsService,
+            achievementManager: achievementManager,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // Verify MainMenu components
+    expect(find.text('AQUA SORT'), findsOneWidget);
+    expect(find.text('EXTREME'), findsOneWidget);
+    expect(find.textContaining('PLAY'), findsOneWidget);
+    expect(find.text('SELECT LEVEL'), findsOneWidget);
+    expect(find.text('DIFFICULTY TIERS'), findsOneWidget);
+    expect(find.text('DAILY CHALLENGE'), findsOneWidget);
+    expect(find.text('STATS'), findsOneWidget);
+    expect(find.text('SKINS'), findsOneWidget);
+    expect(find.text('TROPHIES'), findsOneWidget);
+    expect(find.text('SETTINGS'), findsOneWidget);
   });
 }
