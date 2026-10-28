@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/game_controller.dart';
-import '../theme/game_theme.dart';
+import '../../theme/aqua_palette.dart';
+import '../../theme/gradients.dart';
+import '../../theme/theme_provider.dart';
 
-/// Top bar displaying level title, home, undo, restart, and hint buttons.
+/// Top bar displaying level title with gradient text, home, restart, undo, and hint buttons.
 class TopBar extends ConsumerWidget {
   final VoidCallback? onHomePressed;
   final VoidCallback? onSettingsPressed;
@@ -19,14 +21,15 @@ class TopBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final gameState = ref.watch(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
+    final theme = ref.watch(activeThemePaletteProvider);
     final canUndo = gameState.history.isNotEmpty && !gameState.isInputLocked;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: GameTheme.surfaceDark.withValues(alpha: 0.9),
-        border: const Border(
-          bottom: BorderSide(color: GameTheme.glassBorder, width: 1),
+        color: theme.surface.withValues(alpha: 0.92),
+        border: Border(
+          bottom: BorderSide(color: theme.glassBorder, width: 1),
         ),
       ),
       child: SafeArea(
@@ -35,20 +38,20 @@ class TopBar extends ConsumerWidget {
           children: [
             // Home / Menu Button
             IconButton(
-              icon: const Icon(Icons.home_rounded, color: GameTheme.textBright),
+              icon: Icon(Icons.home_rounded, color: theme.textBright),
               tooltip: 'Home',
               onPressed: onHomePressed ?? () => Navigator.of(context).maybePop(),
             ),
 
-            // Level Info Title
+            // Level Info Title with rich GradientText
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
+                  GradientText(
                     'LEVEL ${gameState.levelNumber}',
+                    gradient: UIGradients.levelTitleGradient(theme),
                     style: const TextStyle(
-                      color: GameTheme.textBright,
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
                       letterSpacing: 1.2,
@@ -57,8 +60,8 @@ class TopBar extends ConsumerWidget {
                   const SizedBox(height: 2),
                   Text(
                     '${gameState.puzzleState.tubeCount} Bottles • ${gameState.currentLevel.settings.tier ?? "Standard"}',
-                    style: const TextStyle(
-                      color: GameTheme.textMuted,
+                    style: TextStyle(
+                      color: theme.textMuted,
                       fontSize: 12,
                     ),
                   ),
@@ -69,7 +72,7 @@ class TopBar extends ConsumerWidget {
             // Restart Button
             IconButton(
               key: const Key('restart_button'),
-              icon: const Icon(Icons.refresh_rounded, color: GameTheme.textBright),
+              icon: Icon(Icons.refresh_rounded, color: theme.textBright),
               tooltip: 'Restart Level',
               onPressed: gameState.isInputLocked ? null : () => controller.restart(),
             ),
@@ -79,7 +82,7 @@ class TopBar extends ConsumerWidget {
               key: const Key('undo_button'),
               icon: Icon(
                 Icons.undo_rounded,
-                color: canUndo ? GameTheme.primaryCyan : GameTheme.textMuted.withValues(alpha: 0.4),
+                color: canUndo ? theme.primaryAccent : theme.textMuted.withValues(alpha: 0.4),
               ),
               tooltip: 'Undo Move',
               onPressed: canUndo ? () => controller.undo() : null,
@@ -89,26 +92,22 @@ class TopBar extends ConsumerWidget {
             IconButton(
               key: const Key('hint_button'),
               icon: gameState.isCalculatingHint
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(GameTheme.accentGold),
+                        valueColor: AlwaysStoppedAnimation<Color>(theme.secondaryAccent),
                       ),
                     )
                   : Icon(
                       Icons.lightbulb_rounded,
                       color: gameState.hintMove != null
-                          ? GameTheme.accentGold
-                          : (gameState.isInputLocked || gameState.isWon
-                              ? GameTheme.textMuted.withValues(alpha: 0.3)
-                              : GameTheme.accentGold.withValues(alpha: 0.9)),
+                          ? theme.secondaryAccent
+                          : theme.textMuted,
                     ),
-              tooltip: 'Hint',
-              onPressed: (gameState.isInputLocked || gameState.isWon || gameState.isCalculatingHint)
-                  ? null
-                  : () => controller.requestHint(),
+              tooltip: 'Get Hint',
+              onPressed: gameState.isInputLocked ? null : () => controller.requestHint(),
             ),
           ],
         ),
