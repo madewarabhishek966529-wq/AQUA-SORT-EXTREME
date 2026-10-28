@@ -217,9 +217,9 @@ class WcagContrast {
           : pow((c + 0.055) / 1.055, 2.4).toDouble();
     }
 
-    final r = transformComponent(color.red / 255.0);
-    final g = transformComponent(color.green / 255.0);
-    final b = transformComponent(color.blue / 255.0);
+    final r = transformComponent(color.r);
+    final g = transformComponent(color.g);
+    final b = transformComponent(color.b);
 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   }

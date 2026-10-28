@@ -5,13 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/game_controller.dart';
 import '../../services/audio_service.dart';
 import '../../services/settings_service.dart';
-import '../theme/game_theme.dart';
+import '../../theme/aqua_palette.dart';
+import '../../theme/theme_provider.dart';
 import '../widgets/bottom_bar.dart';
 import '../widgets/game_board.dart';
 import '../widgets/top_bar.dart';
 import '../widgets/win_dialog.dart';
 
-/// Main gameplay screen for Aqua Sort: Extreme.
+/// Main gameplay screen for Aqua Sort: Extreme with reactive theme integration.
 class GameScreen extends ConsumerStatefulWidget {
   const GameScreen({super.key});
 
@@ -42,9 +43,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final gameState = ref.watch(gameControllerProvider);
     final settingsService = ref.watch(settingsServiceProvider);
     final settings = settingsService.settings;
+    final theme = ref.watch(activeThemePaletteProvider);
 
     return Scaffold(
-      backgroundColor: GameTheme.backgroundDark,
+      backgroundColor: theme.backgroundBase,
       body: Stack(
         children: [
           // Main layout: Top Bar, Board, Bottom Bar
@@ -67,7 +69,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           if (gameState.isWon)
             Positioned.fill(
               child: Container(
-                color: Colors.black54,
+                color: Colors.black.withValues(alpha: 0.65),
                 child: const WinDialog(),
               ),
             ),

@@ -17,7 +17,6 @@ import '../../services/settings_service.dart';
 import '../../theme/aqua_palette.dart';
 import '../../theme/gradients.dart';
 import '../../theme/theme_provider.dart';
-import '../../theme/tube_skins.dart';
 import '../painters/tube_painter.dart';
 
 /// Central game board displaying test tubes with layered animations,

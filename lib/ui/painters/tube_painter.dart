@@ -335,8 +335,8 @@ class TubePainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _drawSurfaceWave({
-    required Canvas canvas,
+  void _drawSurfaceWave(
+    Canvas canvas, {
     required double w,
     required double layerTop,
     required LiquidColor liquidColor,
