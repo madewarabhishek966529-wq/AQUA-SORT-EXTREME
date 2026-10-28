@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/aqua_palette.dart';
-import '../../theme/gradients.dart';
-import '../../theme/theme_provider.dart';
-import '../../theme/tube_skins.dart';
 
 export '../../theme/aqua_palette.dart';
 export '../../theme/gradients.dart';

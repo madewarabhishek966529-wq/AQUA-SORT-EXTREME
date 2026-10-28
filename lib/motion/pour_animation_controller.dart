@@ -64,12 +64,12 @@ class PourAnimationController extends ChangeNotifier {
       return;
     }
 
-    // Base duration scales with unit count: 350ms base + 80ms per unit above 1
-    final baseDurationMs = (360 + (event.count - 1) * 70).clamp(320, 600);
+    // Base duration scales with unit count: 320ms base + 40ms per unit above 1 (max 380ms)
+    final baseDurationMs = (320 + (event.count - 1) * 30).clamp(280, 380);
     final speedMultiplier = isUndo ? (1.0 / 1.5) : 1.0; // 1.5x speed on undo
 
     final effectiveMs = (baseDurationMs * intensity * speedMultiplier).round();
-    _controller.duration = Duration(milliseconds: max(100, effectiveMs));
+    _controller.duration = Duration(milliseconds: max(80, effectiveMs));
 
     _phase = PourPhase.lift;
     _controller.forward(from: 0.0);

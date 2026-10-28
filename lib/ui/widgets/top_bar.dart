@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/game_controller.dart';
-import '../../theme/aqua_palette.dart';
 import '../../theme/gradients.dart';
 import '../../theme/theme_provider.dart';
 

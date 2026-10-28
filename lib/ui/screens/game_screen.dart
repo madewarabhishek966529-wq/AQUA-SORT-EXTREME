@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/game_controller.dart';
 import '../../services/audio_service.dart';
 import '../../services/settings_service.dart';
-import '../../theme/aqua_palette.dart';
 import '../../theme/theme_provider.dart';
 import '../widgets/bottom_bar.dart';
 import '../widgets/game_board.dart';

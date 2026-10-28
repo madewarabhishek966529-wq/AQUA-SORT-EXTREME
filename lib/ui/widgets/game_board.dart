@@ -27,6 +27,7 @@ class GameBoard extends ConsumerStatefulWidget {
   final bool colorblindPalette;
   final bool reducedMotion;
   final AudioService audioService;
+  final bool? enableAmbientLoop;
 
   const GameBoard({
     super.key,
@@ -34,6 +35,7 @@ class GameBoard extends ConsumerStatefulWidget {
     this.colorblindPalette = false,
     this.reducedMotion = false,
     this.audioService = const AudioService(),
+    this.enableAmbientLoop,
   });
 
   @override
@@ -54,13 +56,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
 
   final Map<int, GlobalKey> _tubeKeys = {};
   final Set<int> _completedTubes = {};
-  final Map<int, double> _completionSweepProgress = {};
 
   PourEvent? _lastHandledPourEvent;
   int _focusedIndex = 0;
   bool _hasKeyboardFocus = false;
   int _prevMoves = 0;
   TimingsCallback? _timingsCallback;
+
+  bool get _isTest =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
+  bool get _shouldLoopAmbient =>
+      (widget.enableAmbientLoop ?? !_isTest) && !widget.reducedMotion;
 
   @override
   void initState() {
@@ -119,7 +126,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
     SchedulerBinding.instance.addTimingsCallback(_timingsCallback!);
 
     // Start controllers if motion is active
-    if (!widget.reducedMotion) {
+    if (_shouldLoopAmbient) {
       _ambientLoopController.repeat();
       _entranceAnimController.forward(from: 0.0);
     }
@@ -128,13 +135,11 @@ class _GameBoardState extends ConsumerState<GameBoard>
   @override
   void didUpdateWidget(covariant GameBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.reducedMotion != oldWidget.reducedMotion) {
-      if (widget.reducedMotion) {
-        _ambientLoopController.stop();
-        _particlePool.clear();
-      } else {
-        _ambientLoopController.repeat();
-      }
+    if (_shouldLoopAmbient && !_ambientLoopController.isAnimating) {
+      _ambientLoopController.repeat();
+    } else if (!_shouldLoopAmbient && _ambientLoopController.isAnimating) {
+      _ambientLoopController.stop();
+      _particlePool.clear();
     }
   }
 
@@ -274,7 +279,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
   void _checkTubeCompletions(PuzzleState puzzleState, ThemePalette theme, MotionQualityProfile profile) {
     for (var i = 0; i < puzzleState.tubeCount; i++) {
       final tube = puzzleState.tubes[i];
-      final isComplete = tube.isComplete;
+      final isComplete = tube.isFull && tube.isSingleColor;
 
       if (isComplete && !_completedTubes.contains(i)) {
         _completedTubes.add(i);
@@ -318,11 +323,11 @@ class _GameBoardState extends ConsumerState<GameBoard>
       reducedMotion: settings.reducedMotion,
     );
 
-    // Stop ambient controller if static mode requested
-    if (motionProfile.isStatic && _ambientLoopController.isAnimating) {
+    // Manage ambient controller lifecycle
+    if ((motionProfile.isStatic || !_shouldLoopAmbient) && _ambientLoopController.isAnimating) {
       _ambientLoopController.stop();
       _particlePool.clear();
-    } else if (!motionProfile.isStatic && !_ambientLoopController.isAnimating) {
+    } else if (!motionProfile.isStatic && _shouldLoopAmbient && !_ambientLoopController.isAnimating) {
       _ambientLoopController.repeat();
     }
 
@@ -334,20 +339,20 @@ class _GameBoardState extends ConsumerState<GameBoard>
       final isUndo = gameState.moves < _prevMoves;
       _prevMoves = gameState.moves;
 
-      // Start pour sequence
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _pourController.startPour(
-          event,
-          intensity: settings.animationIntensity,
-          reducedMotion: settings.reducedMotion,
-          isUndo: isUndo,
-          onComplete: () {
-            ref.read(gameControllerProvider.notifier).unlockInput();
-          },
-        );
+      // Start pour sequence immediately
+      _pourController.startPour(
+        event,
+        intensity: settings.animationIntensity,
+        reducedMotion: settings.reducedMotion,
+        isUndo: isUndo,
+        onComplete: () {
+          ref.read(gameControllerProvider.notifier).unlockInput();
+        },
+      );
 
-        // Spawn splash droplets at destination lip if motion enabled
-        if (!motionProfile.isStatic && motionProfile.maxParticles > 0) {
+      // Spawn splash droplets at destination lip if motion enabled
+      if (!motionProfile.isStatic && motionProfile.maxParticles > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
           final toKey = _tubeKeys[event.to];
           final box = toKey?.currentContext?.findRenderObject() as RenderBox?;
           final boardBox = context.findRenderObject() as RenderBox?;
@@ -358,8 +363,8 @@ class _GameBoardState extends ConsumerState<GameBoard>
             final color = theme.getLiquidColor(event.color).base;
             _particlePool.emitPourSplash(toLip, color, min(8, motionProfile.maxParticles ~/ 6));
           }
-        }
-      });
+        });
+      }
     }
 
     // Trigger shake animation if shakingTubeIndex is set

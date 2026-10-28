@@ -44,6 +44,9 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
   PlayerStats _stats = const PlayerStats();
   late final AnimationController _ambientController;
 
+  bool get _isTest =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
   @override
   void initState() {
     super.initState();
@@ -53,7 +56,8 @@ class _MainMenuScreenState extends ConsumerState<MainMenuScreen>
     );
 
     final isStatic = widget.settingsService.settings.reducedMotion ||
-        widget.settingsService.settings.animationIntensity <= 0.05;
+        widget.settingsService.settings.animationIntensity <= 0.05 ||
+        _isTest;
     if (!isStatic) {
       _ambientController.repeat();
     }

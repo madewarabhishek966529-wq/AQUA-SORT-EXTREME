@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../services/settings_service.dart';
 import '../../theme/aqua_palette.dart';
-import '../../theme/gradients.dart';
 import '../theme/game_theme.dart';
 
 /// Interactive Settings screen for audio, visual themes, animation intensity,
