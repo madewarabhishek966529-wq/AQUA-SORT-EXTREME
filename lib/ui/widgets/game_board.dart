@@ -1,19 +1,28 @@
 import 'dart:math';
+import 'package:aqua_engine/aqua_engine.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../controllers/game_controller.dart';
 import '../../controllers/pour_event.dart';
+import '../../motion/effects_layer.dart';
+import '../../motion/motion_budget_service.dart';
+import '../../motion/motion_tokens.dart';
+import '../../motion/particle_system.dart';
+import '../../motion/pour_animation_controller.dart';
 import '../../services/audio_service.dart';
-import '../painters/liquid_stream_painter.dart';
+import '../../services/settings_service.dart';
+import '../../theme/aqua_palette.dart';
+import '../../theme/gradients.dart';
+import '../../theme/theme_provider.dart';
+import '../../theme/tube_skins.dart';
 import '../painters/tube_painter.dart';
-import '../painters/win_particle_painter.dart';
-import '../theme/game_theme.dart';
 
-/// Central game board displaying test tubes, handling player gestures,
-/// coordinating pour/shake/win animations, keyboard navigation,
-/// adaptive scaling, zoom controls, and accessibility cues.
+/// Central game board displaying test tubes with layered animations,
+/// ambient mesh gradients, smart motion budgeting, pooled particles,
+/// and accessible visual cues.
 class GameBoard extends ConsumerStatefulWidget {
   final bool showColorblindCues;
   final bool colorblindPalette;
@@ -34,17 +43,25 @@ class GameBoard extends ConsumerStatefulWidget {
 
 class _GameBoardState extends ConsumerState<GameBoard>
     with TickerProviderStateMixin {
-  late final AnimationController _pourAnimController;
+  late final PourAnimationController _pourController;
   late final AnimationController _shakeAnimController;
-  late final AnimationController _winAnimController;
+  late final AnimationController _ambientLoopController;
+  late final AnimationController _entranceAnimController;
   late final TransformationController _transformController;
   late final FocusNode _focusNode;
 
+  late final ParticlePool _particlePool;
+  late final MotionBudgetService _budgetService;
+
   final Map<int, GlobalKey> _tubeKeys = {};
-  PourEvent? _currentAnimatingPour;
-  List<Particle>? _winParticles;
+  final Set<int> _completedTubes = {};
+  final Map<int, double> _completionSweepProgress = {};
+
+  PourEvent? _lastHandledPourEvent;
   int _focusedIndex = 0;
   bool _hasKeyboardFocus = false;
+  int _prevMoves = 0;
+  TimingsCallback? _timingsCallback;
 
   @override
   void initState() {
@@ -54,34 +71,24 @@ class _GameBoardState extends ConsumerState<GameBoard>
     _focusNode = FocusNode();
     _focusNode.addListener(() {
       if (mounted) {
-        setState(() {
-          _hasKeyboardFocus = _focusNode.hasFocus;
-        });
+        setState(() => _hasKeyboardFocus = _focusNode.hasFocus);
       }
     });
 
-    // Pour animation controller: 400ms total (or 200ms if reduced motion)
-    final pourDuration = widget.reducedMotion
-        ? const Duration(milliseconds: 150)
-        : const Duration(milliseconds: 400);
+    _particlePool = ParticlePool(maxCapacity: 160);
+    _budgetService = MotionBudgetService();
 
-    _pourAnimController = AnimationController(
-      vsync: this,
-      duration: pourDuration,
-    );
-
-    _pourAnimController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _finishPourAnimation();
-      }
+    // Pour sequence controller
+    _pourController = PourAnimationController(vsync: this);
+    _pourController.addListener(() {
+      if (mounted) setState(() {});
     });
 
     // Invalid shake animation: 250ms
     _shakeAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 250),
+      duration: MotionTokens.invalidShake,
     );
-
     _shakeAnimController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         ref.read(gameControllerProvider.notifier).clearShaking();
@@ -89,34 +96,74 @@ class _GameBoardState extends ConsumerState<GameBoard>
       }
     });
 
-    // Victory celebration animation: 1800ms
-    _winAnimController = AnimationController(
+    // Ambient loop: 14 seconds looping for drifting mesh, surface waves, particle updates
+    _ambientLoopController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: MotionTokens.meshDriftPeriod,
     );
+    _ambientLoopController.addListener(_onAmbientTick);
+
+    // Staggered entrance cascade controller
+    _entranceAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    );
+
+    // Register real frame timing monitoring from Flutter engine
+    _timingsCallback = (List<FrameTiming> timings) {
+      if (!mounted) return;
+      for (final timing in timings) {
+        final frameMs = timing.totalSpan.inMicroseconds / 1000.0;
+        _budgetService.recordFrameTime(frameMs);
+      }
+    };
+    SchedulerBinding.instance.addTimingsCallback(_timingsCallback!);
+
+    // Start controllers if motion is active
+    if (!widget.reducedMotion) {
+      _ambientLoopController.repeat();
+      _entranceAnimController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant GameBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.reducedMotion != oldWidget.reducedMotion) {
+      if (widget.reducedMotion) {
+        _ambientLoopController.stop();
+        _particlePool.clear();
+      } else {
+        _ambientLoopController.repeat();
+      }
+    }
   }
 
   @override
   void dispose() {
-    _pourAnimController.dispose();
+    if (_timingsCallback != null) {
+      SchedulerBinding.instance.removeTimingsCallback(_timingsCallback!);
+    }
+    _pourController.dispose();
     _shakeAnimController.dispose();
-    _winAnimController.dispose();
+    _ambientLoopController.dispose();
+    _entranceAnimController.dispose();
     _transformController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _finishPourAnimation() {
-    _pourAnimController.reset();
-    _currentAnimatingPour = null;
-    ref.read(gameControllerProvider.notifier).unlockInput();
+  void _onAmbientTick() {
+    if (!mounted) return;
+    if (_particlePool.activeCount > 0) {
+      _particlePool.update(0.016); // ~60fps simulation delta
+      setState(() {});
+    }
   }
 
-  /// Skipping animation on tap
   void _skipAnimation() {
-    if (_pourAnimController.isAnimating) {
-      _pourAnimController.stop();
-      _finishPourAnimation();
+    if (_pourController.isAnimating) {
+      _pourController.fastForward();
     }
   }
 
@@ -138,26 +185,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
     final controller = ref.read(gameControllerProvider.notifier);
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      setState(() {
-        _focusedIndex = (_focusedIndex + 1) % tubeCount;
-      });
+      setState(() => _focusedIndex = (_focusedIndex + 1) % tubeCount);
       return KeyEventResult.handled;
     } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      setState(() {
-        _focusedIndex = (_focusedIndex - 1 + tubeCount) % tubeCount;
-      });
+      setState(() => _focusedIndex = (_focusedIndex - 1 + tubeCount) % tubeCount);
       return KeyEventResult.handled;
     } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       final cols = _calculateColumnCount(tubeCount);
-      setState(() {
-        _focusedIndex = (_focusedIndex + cols) % tubeCount;
-      });
+      setState(() => _focusedIndex = (_focusedIndex + cols) % tubeCount);
       return KeyEventResult.handled;
     } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       final cols = _calculateColumnCount(tubeCount);
-      setState(() {
-        _focusedIndex = (_focusedIndex - cols + tubeCount) % tubeCount;
-      });
+      setState(() => _focusedIndex = (_focusedIndex - cols + tubeCount) % tubeCount);
       return KeyEventResult.handled;
     } else if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.space) {
@@ -194,9 +233,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
     final gameState = ref.read(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
 
-    setState(() {
-      _focusedIndex = index;
-    });
+    setState(() => _focusedIndex = index);
 
     if (gameState.isInputLocked) {
       _skipAnimation();
@@ -235,17 +272,95 @@ class _GameBoardState extends ConsumerState<GameBoard>
     return (34.0, 102.0); // 50 to 60+ tubes
   }
 
+  void _checkTubeCompletions(PuzzleState puzzleState, ThemePalette theme, MotionQualityProfile profile) {
+    for (var i = 0; i < puzzleState.tubeCount; i++) {
+      final tube = puzzleState.tubes[i];
+      final isComplete = tube.isComplete;
+
+      if (isComplete && !_completedTubes.contains(i)) {
+        _completedTubes.add(i);
+        // Trigger completion sparkle burst and lock sweep if motion enabled
+        if (!profile.isStatic && profile.maxParticles > 0) {
+          final tubeKey = _tubeKeys[i];
+          final context = tubeKey?.currentContext;
+          if (context != null) {
+            final box = context.findRenderObject() as RenderBox?;
+            final boardBox = this.context.findRenderObject() as RenderBox?;
+            if (box != null && boardBox != null) {
+              final lipPos = boardBox.globalToLocal(
+                box.localToGlobal(Offset(box.size.width / 2, 0)),
+              );
+              final color = theme.getLiquidColor(tube.units.first).base;
+              _particlePool.emitTubeCompletionBurst(lipPos, color, min(14, profile.maxParticles ~/ 4));
+            }
+          }
+        }
+      } else if (!isComplete && _completedTubes.contains(i)) {
+        _completedTubes.remove(i);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameState = ref.watch(gameControllerProvider);
+    final settingsService = ref.watch(settingsServiceProvider);
+    final settings = settingsService.settings;
+    final theme = ref.watch(activeThemePaletteProvider);
+    final skin = ref.watch(activeTubeSkinProvider);
+
     final puzzleState = gameState.puzzleState;
     final tubeCount = puzzleState.tubeCount;
 
-    // Trigger pour animation if new pour event emitted
+    // Evaluate dynamic motion quality budget
+    final motionProfile = _budgetService.evaluate(
+      tubeCount: tubeCount,
+      animationIntensity: settings.animationIntensity,
+      reducedMotion: settings.reducedMotion,
+    );
+
+    // Stop ambient controller if static mode requested
+    if (motionProfile.isStatic && _ambientLoopController.isAnimating) {
+      _ambientLoopController.stop();
+      _particlePool.clear();
+    } else if (!motionProfile.isStatic && !_ambientLoopController.isAnimating) {
+      _ambientLoopController.repeat();
+    }
+
+    // Handle incoming PourEvent via PourAnimationController
     if (gameState.activePourEvent != null &&
-        gameState.activePourEvent != _currentAnimatingPour) {
-      _currentAnimatingPour = gameState.activePourEvent;
-      _pourAnimController.forward(from: 0.0);
+        gameState.activePourEvent != _lastHandledPourEvent) {
+      final event = gameState.activePourEvent!;
+      _lastHandledPourEvent = event;
+      final isUndo = gameState.moves < _prevMoves;
+      _prevMoves = gameState.moves;
+
+      // Start pour sequence
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pourController.startPour(
+          event,
+          intensity: settings.animationIntensity,
+          reducedMotion: settings.reducedMotion,
+          isUndo: isUndo,
+          onComplete: () {
+            ref.read(gameControllerProvider.notifier).unlockInput();
+          },
+        );
+
+        // Spawn splash droplets at destination lip if motion enabled
+        if (!motionProfile.isStatic && motionProfile.maxParticles > 0) {
+          final toKey = _tubeKeys[event.to];
+          final box = toKey?.currentContext?.findRenderObject() as RenderBox?;
+          final boardBox = context.findRenderObject() as RenderBox?;
+          if (box != null && boardBox != null) {
+            final toLip = boardBox.globalToLocal(
+              box.localToGlobal(Offset(box.size.width / 2, 0)),
+            );
+            final color = theme.getLiquidColor(event.color).base;
+            _particlePool.emitPourSplash(toLip, color, min(8, motionProfile.maxParticles ~/ 6));
+          }
+        }
+      });
     }
 
     // Trigger shake animation if shakingTubeIndex is set
@@ -253,20 +368,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
       _shakeAnimController.forward(from: 0.0);
     }
 
-    // Trigger win animation when won
-    if (gameState.isWon && !_winAnimController.isAnimating && _winParticles == null) {
+    // Trigger win celebratory confetti
+    if (gameState.isWon && _particlePool.activeCount == 0 && !motionProfile.isStatic) {
       widget.audioService.playVictory();
-      if (!widget.reducedMotion) {
-        final size = MediaQuery.of(context).size;
-        _winParticles = WinParticlePainter.createExplosion(size, count: 90);
-        _winAnimController.repeat();
-      }
-    } else if (!gameState.isWon && _winParticles != null) {
-      _winParticles = null;
-      _winAnimController.stop();
+      final size = MediaQuery.of(context).size;
+      final colors = theme.standardLiquidColors.map((c) => c.base).toList();
+      _particlePool.emitWinConfetti(size, colors, min(75, motionProfile.maxParticles));
     }
 
-    // Calculate valid destination tubes when a tube is currently selected
+    // Check newly completed tubes
+    _checkTubeCompletions(puzzleState, theme, motionProfile);
+
+    // Calculate valid destination tubes
     final validDestinations = <int>{};
     if (gameState.selectedTubeIndex != null) {
       final controller = ref.read(gameControllerProvider.notifier);
@@ -277,9 +390,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
             gameState.selectedTubeIndex!,
             i,
           );
-          if (move != null) {
-            validDestinations.add(i);
-          }
+          if (move != null) validDestinations.add(i);
         }
       }
     }
@@ -287,6 +398,56 @@ class _GameBoardState extends ConsumerState<GameBoard>
     final (tubeWidth, tubeHeight) = _getTubeDimensions(tubeCount);
     final tubeSpacing = tubeCount > 24 ? 10.0 : 16.0;
     final tubeRunSpacing = tubeCount > 24 ? 16.0 : 24.0;
+
+    // Stream coordinates for EffectsLayer
+    Offset? streamStart;
+    Offset? streamEnd;
+    int? streamColorId;
+
+    if (_pourController.isAnimating && _pourController.activeEvent != null) {
+      final event = _pourController.activeEvent!;
+      streamColorId = event.color;
+      final fromKey = _tubeKeys[event.from];
+      final toKey = _tubeKeys[event.to];
+
+      final boardBox = context.findRenderObject() as RenderBox?;
+      final fromBox = fromKey?.currentContext?.findRenderObject() as RenderBox?;
+      final toBox = toKey?.currentContext?.findRenderObject() as RenderBox?;
+
+      if (boardBox != null && fromBox != null && toBox != null) {
+        streamStart = boardBox.globalToLocal(
+          fromBox.localToGlobal(Offset(fromBox.size.width / 2, 0)),
+        );
+        streamEnd = boardBox.globalToLocal(
+          toBox.localToGlobal(Offset(toBox.size.width / 2, 0)),
+        );
+      }
+    }
+
+    // Hint path coordinates
+    Offset? hintSourcePos;
+    Offset? hintTargetPos;
+    if (gameState.hintMove != null) {
+      final fromKey = _tubeKeys[gameState.hintMove!.from];
+      final toKey = _tubeKeys[gameState.hintMove!.to];
+      final boardBox = context.findRenderObject() as RenderBox?;
+      final fromBox = fromKey?.currentContext?.findRenderObject() as RenderBox?;
+      final toBox = toKey?.currentContext?.findRenderObject() as RenderBox?;
+
+      if (boardBox != null && fromBox != null && toBox != null) {
+        hintSourcePos = boardBox.globalToLocal(
+          fromBox.localToGlobal(Offset(fromBox.size.width / 2, 0)),
+        );
+        hintTargetPos = boardBox.globalToLocal(
+          toBox.localToGlobal(Offset(toBox.size.width / 2, 0)),
+        );
+      }
+    }
+
+    final ambientProgress = _ambientLoopController.value;
+    final wavePhase = ambientProgress * 2 * pi * 4;
+    final bubbleTime = ambientProgress * 14.0;
+    final entranceVal = motionProfile.isStatic ? 1.0 : _entranceAnimController.value;
 
     return Focus(
       focusNode: _focusNode,
@@ -302,23 +463,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
         },
         child: Stack(
           children: [
-            // Background subtle ambient radial glow
+            // 1. Slow animated drifting background gradient mesh
             Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0.0, -0.2),
-                    radius: 1.2,
-                    colors: [
-                      Color(0xFF162238),
-                      GameTheme.backgroundDark,
-                    ],
-                  ),
+              child: CustomPaint(
+                painter: MeshGradientPainter(
+                  theme: theme,
+                  animationProgress: ambientProgress,
+                  isStatic: motionProfile.isStatic || !motionProfile.ambientBackgroundEnabled,
                 ),
               ),
             ),
 
-            // Pan & Zoomable Tubes Board
+            // 2. Pan & Zoomable Tubes Board
             InteractiveViewer(
               transformationController: _transformController,
               minScale: 0.5,
@@ -329,8 +485,10 @@ class _GameBoardState extends ConsumerState<GameBoard>
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                   child: AnimatedBuilder(
                     animation: Listenable.merge([
-                      _pourAnimController,
+                      _pourController,
                       _shakeAnimController,
+                      _ambientLoopController,
+                      _entranceAnimController,
                     ]),
                     builder: (context, _) {
                       return Wrap(
@@ -349,56 +507,85 @@ class _GameBoardState extends ConsumerState<GameBoard>
 
                           Color? glowColor;
                           if (isSelected) {
-                            glowColor = GameTheme.primaryCyan;
+                            glowColor = theme.primaryAccent;
                           } else if (isHintFrom) {
-                            glowColor = GameTheme.accentGold;
+                            glowColor = theme.secondaryAccent;
                           } else if (isHintTo) {
-                            glowColor = GameTheme.accentGreen;
+                            glowColor = const Color(0xFF00E676);
                           }
 
-                          // Calculate shake horizontal offset
+                          // Calculate shake offset
                           var shakeOffset = 0.0;
                           if (isShaking && _shakeAnimController.isAnimating) {
                             shakeOffset = sin(_shakeAnimController.value * pi * 4) * 8.0;
                           }
 
-                          // Calculate pour animation properties
+                          // Calculate lift & tilt from PourAnimationController
                           var liftOffset = 0.0;
                           var tiltAngle = 0.0;
 
                           if (isSelected || isHintFrom) {
                             liftOffset = -18.0;
-                          } else if (_currentAnimatingPour != null &&
-                              _currentAnimatingPour!.from == index) {
-                            final animVal = _pourAnimController.value;
-                            liftOffset = -22.0 * sin(animVal * pi);
-                            final tiltDir = _currentAnimatingPour!.to > _currentAnimatingPour!.from ? 1.0 : -1.0;
-                            tiltAngle = 0.45 * sin(animVal * pi) * tiltDir;
+                          } else if (_pourController.isAnimating &&
+                              _pourController.activeEvent?.from == index) {
+                            liftOffset = _pourController.liftOffset;
+                            tiltAngle = _pourController.tiltAngle;
+                          }
+
+                          // Staggered cascade entrance delay per tube
+                          var entranceY = 0.0;
+                          var entranceOpacity = 1.0;
+                          if (!motionProfile.isStatic && entranceVal < 1.0) {
+                            final delay = (index * 0.015).clamp(0.0, 0.60);
+                            final t = ((entranceVal - delay) / (1.0 - delay)).clamp(0.0, 1.0);
+                            entranceY = (1.0 - MotionTokens.springEase.transform(t)) * 40.0;
+                            entranceOpacity = t;
+                          }
+
+                          // Subtle idle tube breathing (0.5% scale oscillation)
+                          var scale = 1.0;
+                          if (!motionProfile.isStatic &&
+                              !isSelected &&
+                              !_pourController.isAnimating &&
+                              tubeCount <= 30) {
+                            scale = 1.0 + 0.005 * sin(ambientProgress * 2 * pi + index * 0.4);
                           }
 
                           return Transform.translate(
-                            offset: Offset(shakeOffset, liftOffset),
-                            child: RepaintBoundary(
-                              key: Key('tube_boundary_$index'),
-                              child: GestureDetector(
-                                key: Key('tube_$index'),
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => _onTubeTapped(index),
-                                child: SizedBox(
-                                  key: _tubeKeys[index],
-                                  width: tubeWidth,
-                                  height: tubeHeight,
-                                  child: CustomPaint(
-                                    painter: TubePainter(
-                                      tube: tube,
-                                      isSelected: isSelected || isHintFrom || isHintTo,
-                                      isFocused: isFocused,
-                                      isValidDestination: isValidDest,
-                                      showColorblindCues: widget.showColorblindCues,
-                                      colorblindPalette: widget.colorblindPalette,
-                                      glowColor: glowColor,
-                                      shakeOffset: shakeOffset,
-                                      tiltAngle: tiltAngle,
+                            offset: Offset(shakeOffset, liftOffset + entranceY),
+                            child: Transform.scale(
+                              scale: scale,
+                              child: Opacity(
+                                opacity: entranceOpacity,
+                                child: RepaintBoundary(
+                                  key: Key('tube_boundary_$index'),
+                                  child: GestureDetector(
+                                    key: Key('tube_$index'),
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => _onTubeTapped(index),
+                                    child: SizedBox(
+                                      key: _tubeKeys[index],
+                                      width: tubeWidth,
+                                      height: tubeHeight,
+                                      child: CustomPaint(
+                                        painter: TubePainter(
+                                          tube: tube,
+                                          isSelected: isSelected || isHintFrom || isHintTo,
+                                          isFocused: isFocused,
+                                          isValidDestination: isValidDest,
+                                          showColorblindCues: widget.showColorblindCues,
+                                          colorblindPalette: widget.colorblindPalette,
+                                          shakeOffset: shakeOffset,
+                                          tiltAngle: tiltAngle,
+                                          glowColor: glowColor,
+                                          theme: theme,
+                                          skin: skin,
+                                          wavePhase: wavePhase,
+                                          waveAmplitude: motionProfile.waveAnimationEnabled ? 1.4 : 0.0,
+                                          enableBubbles: motionProfile.bubblesEnabled,
+                                          bubbleTime: bubbleTime,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -413,70 +600,39 @@ class _GameBoardState extends ConsumerState<GameBoard>
               ),
             ),
 
-            // Liquid Pouring Stream Overlay
-            if (_currentAnimatingPour != null && _pourAnimController.isAnimating)
-              AnimatedBuilder(
-                animation: _pourAnimController,
+            // 3. Effects Layer (Fluid Stream, Droplets, Splashes, Confetti, Hint Path)
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _pourController,
+                  _ambientLoopController,
+                ]),
                 builder: (context, _) {
-                  final fromKey = _tubeKeys[_currentAnimatingPour!.from];
-                  final toKey = _tubeKeys[_currentAnimatingPour!.to];
-
-                  if (fromKey?.currentContext == null || toKey?.currentContext == null) {
-                    return const SizedBox.shrink();
-                  }
-
-                  final renderBoxBoard = context.findRenderObject() as RenderBox?;
-                  final fromBox = fromKey!.currentContext!.findRenderObject() as RenderBox?;
-                  final toBox = toKey!.currentContext!.findRenderObject() as RenderBox?;
-
-                  if (renderBoxBoard == null || fromBox == null || toBox == null) {
-                    return const SizedBox.shrink();
-                  }
-
-                  final fromPos = renderBoxBoard.globalToLocal(
-                    fromBox.localToGlobal(Offset(fromBox.size.width / 2, 0)),
-                  );
-                  final toPos = renderBoxBoard.globalToLocal(
-                    toBox.localToGlobal(Offset(toBox.size.width / 2, 0)),
-                  );
-
-                  return CustomPaint(
-                    size: Size.infinite,
-                    painter: LiquidStreamPainter(
-                      startOffset: fromPos,
-                      endOffset: toPos,
-                      colorId: _currentAnimatingPour!.color,
-                      progress: _pourAnimController.value,
-                    ),
+                  return EffectsLayer(
+                    particlePool: _particlePool,
+                    pourController: _pourController,
+                    sourceLipPosition: streamStart,
+                    targetLipPosition: streamEnd,
+                    streamColorId: streamColorId,
+                    theme: theme,
+                    hintSourcePos: hintSourcePos,
+                    hintTargetPos: hintTargetPos,
+                    hintPulseProgress: (ambientProgress * 3.5) % 1.0,
                   );
                 },
               ),
+            ),
 
-            // Victory Particles Overlay
-            if (_winParticles != null && !widget.reducedMotion)
-              AnimatedBuilder(
-                animation: _winAnimController,
-                builder: (context, _) {
-                  return CustomPaint(
-                    size: Size.infinite,
-                    painter: WinParticlePainter(
-                      particles: _winParticles!,
-                      animationProgress: _winAnimController.value,
-                    ),
-                  );
-                },
-              ),
-
-            // Floating Zoom & Pan Controls
+            // 4. Floating Zoom & Pan Controls
             Positioned(
               bottom: 16,
               right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                 decoration: BoxDecoration(
-                  color: GameTheme.surfaceDark.withValues(alpha: 0.88),
+                  gradient: UIGradients.glassCardGradient(theme),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: GameTheme.glassBorder),
+                  border: Border.all(color: theme.glassBorder),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.35),
@@ -490,7 +646,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
                   children: [
                     IconButton(
                       key: const Key('zoom_out_button'),
-                      icon: const Icon(Icons.remove_rounded, color: GameTheme.textBright, size: 18),
+                      icon: Icon(Icons.remove_rounded, color: theme.textBright, size: 18),
                       tooltip: 'Zoom Out',
                       onPressed: () => _zoom(0.85),
                       visualDensity: VisualDensity.compact,
@@ -501,13 +657,13 @@ class _GameBoardState extends ConsumerState<GameBoard>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: GameTheme.surfaceElevated,
+                          color: theme.surfaceElevated,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Text(
+                        child: Text(
                           '100%',
                           style: TextStyle(
-                            color: GameTheme.primaryCyan,
+                            color: theme.primaryAccent,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -516,7 +672,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
                     ),
                     IconButton(
                       key: const Key('zoom_in_button'),
-                      icon: const Icon(Icons.add_rounded, color: GameTheme.textBright, size: 18),
+                      icon: Icon(Icons.add_rounded, color: theme.textBright, size: 18),
                       tooltip: 'Zoom In',
                       onPressed: () => _zoom(1.18),
                       visualDensity: VisualDensity.compact,
@@ -525,6 +681,66 @@ class _GameBoardState extends ConsumerState<GameBoard>
                 ),
               ),
             ),
+
+            // 5. Debug Motion Budget Overlay (when enabled in settings)
+            if (settings.showMotionDebugOverlay)
+              Positioned(
+                top: 16,
+                left: 16,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  constraints: const BoxConstraints(maxWidth: 280),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: theme.primaryAccent, width: 1.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'MOTION BUDGET',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            motionProfile.quality.name.toUpperCase(),
+                            style: TextStyle(
+                              color: theme.primaryAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Avg Frametime: ${_budgetService.averageFrameTimeMs.toStringAsFixed(1)} ms',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      ),
+                      Text(
+                        'Tubes: $tubeCount | Max Particles: ${motionProfile.maxParticles}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      ),
+                      Text(
+                        'Bubbles: ${motionProfile.bubblesEnabled} | Waves: ${motionProfile.waveAnimationEnabled}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      ),
+                      Text(
+                        'Ambient: ${motionProfile.ambientBackgroundEnabled} | Static: ${motionProfile.isStatic}',
+                        style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),

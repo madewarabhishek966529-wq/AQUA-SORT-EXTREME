@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,7 +12,8 @@ import 'ui/theme/game_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final repository = SqliteSaveRepository();
+  final SaveRepository repository =
+      kIsWeb ? InMemorySaveRepository() : SqliteSaveRepository();
   await repository.init();
 
   final settingsService = await SettingsService.create();
