@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 
@@ -58,9 +59,11 @@ class PourAnimationController extends ChangeNotifier {
     // Instant completion on reduced motion or Off intensity
     if (reducedMotion || intensity <= 0.05) {
       _phase = PourPhase.idle;
-      _controller.value = 1.0;
-      onComplete?.call();
-      notifyListeners();
+      _activeEvent = null;
+      _isUndo = false;
+      scheduleMicrotask(() {
+        onComplete?.call();
+      });
       return;
     }
 

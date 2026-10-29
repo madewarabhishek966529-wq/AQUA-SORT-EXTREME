@@ -98,13 +98,13 @@ void main() {
 
     test('Recovers quality when rolling frametimes stay smooth under 13.0ms', () {
       // Force step down to LOW
-      for (var i = 0; i < 40; i++) {
+      for (var i = 0; i < 45; i++) {
         service.recordFrameTime(25.0);
       }
       expect(service.dynamicQuality, equals(MotionQualityLevel.low));
 
-      // Feed stable 10ms frames (< 13.0ms) for a full rolling window
-      for (var i = 0; i < 25; i++) {
+      // Feed smooth 10ms frames: first flush slow frames from window, then accumulate stable window
+      for (var i = 0; i < 45; i++) {
         service.recordFrameTime(10.0);
       }
       expect(service.dynamicQuality, equals(MotionQualityLevel.medium));

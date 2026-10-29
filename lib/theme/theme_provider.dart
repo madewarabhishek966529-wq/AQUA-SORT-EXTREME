@@ -15,3 +15,4 @@ final activeTubeSkinProvider = Provider<TubeSkin>((ref) {
   final settings = ref.watch(settingsServiceProvider).settings;
   return TubeSkinRegistry.getSkin(settings.selectedSkin);
 });
+

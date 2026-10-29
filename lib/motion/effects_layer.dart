@@ -232,3 +232,4 @@ class _EffectsOverlayPainter extends CustomPainter {
     return true; // Continuously updated during active particle/stream animations
   }
 }
+

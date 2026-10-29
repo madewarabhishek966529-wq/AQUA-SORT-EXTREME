@@ -74,6 +74,7 @@ class MotionBudgetService {
   final List<double> _frameTimesMs = [];
   MotionQualityLevel _dynamicQuality = MotionQualityLevel.high;
   int _stableFramesCount = 0;
+  int _unstableFramesCount = 0;
   final List<String> _decisionLogs = [];
 
   MotionBudgetService({this.rollingWindowSize = 30});
@@ -100,15 +101,20 @@ class MotionBudgetService {
     // Frame dropped below ~60fps target threshold (16.6ms)
     if (avg > 16.6) {
       _stableFramesCount = 0;
-      if (_dynamicQuality == MotionQualityLevel.high) {
-        _dynamicQuality = MotionQualityLevel.medium;
-        _log('Frametime high (${avg.toStringAsFixed(1)}ms): Stepped down to MEDIUM quality.');
-      } else if (_dynamicQuality == MotionQualityLevel.medium) {
-        _dynamicQuality = MotionQualityLevel.low;
-        _log('Frametime critical (${avg.toStringAsFixed(1)}ms): Stepped down to LOW quality.');
+      _unstableFramesCount++;
+      if (_unstableFramesCount >= rollingWindowSize) {
+        _unstableFramesCount = 0;
+        if (_dynamicQuality == MotionQualityLevel.high) {
+          _dynamicQuality = MotionQualityLevel.medium;
+          _log('Frametime high (${avg.toStringAsFixed(1)}ms): Stepped down to MEDIUM quality.');
+        } else if (_dynamicQuality == MotionQualityLevel.medium) {
+          _dynamicQuality = MotionQualityLevel.low;
+          _log('Frametime critical (${avg.toStringAsFixed(1)}ms): Stepped down to LOW quality.');
+        }
       }
     } else if (avg < 13.0) {
       // Stable and smooth performance
+      _unstableFramesCount = 0;
       _stableFramesCount++;
       if (_stableFramesCount >= rollingWindowSize) {
         _stableFramesCount = 0;
@@ -120,6 +126,9 @@ class MotionBudgetService {
           _log('Frametime smooth (${avg.toStringAsFixed(1)}ms): Recovered to HIGH quality.');
         }
       }
+    } else {
+      _unstableFramesCount = 0;
+      _stableFramesCount = 0;
     }
   }
 
