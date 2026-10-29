@@ -71,16 +71,37 @@ class MotionQualityProfile {
 /// Service monitoring frame rates and tube counts to enforce adaptive visual budgets.
 class MotionBudgetService {
   final int rollingWindowSize;
+  final double targetFps;
   final List<double> _frameTimesMs = [];
   MotionQualityLevel _dynamicQuality = MotionQualityLevel.high;
   int _stableFramesCount = 0;
   int _unstableFramesCount = 0;
   final List<String> _decisionLogs = [];
 
-  MotionBudgetService({this.rollingWindowSize = 30});
+  MotionBudgetService({
+    this.rollingWindowSize = 30,
+    this.targetFps = 60.0,
+  });
+
+  /// Factory for 120 FPS high-refresh-rate configuration (8.33 ms budget)
+  factory MotionBudgetService.target120Fps({int rollingWindowSize = 30}) {
+    return MotionBudgetService(
+      rollingWindowSize: rollingWindowSize,
+      targetFps: 120.0,
+    );
+  }
 
   MotionQualityLevel get dynamicQuality => _dynamicQuality;
   List<String> get decisionLogs => List.unmodifiable(_decisionLogs);
+
+  /// Target frame time budget in milliseconds (8.33ms at 120 FPS, 16.67ms at 60 FPS).
+  double get targetBudgetMs => 1000.0 / targetFps;
+
+  /// Threshold for stepping down quality tier.
+  double get stepDownThresholdMs => targetBudgetMs;
+
+  /// Threshold for recovering to a higher quality tier.
+  double get stepUpThresholdMs => targetBudgetMs * 0.78;
 
   /// Computes average frame duration across recent rolling window.
   double get averageFrameTimeMs {
@@ -97,9 +118,11 @@ class MotionBudgetService {
     }
 
     final avg = averageFrameTimeMs;
+    final stepDown = stepDownThresholdMs;
+    final stepUp = stepUpThresholdMs;
 
-    // Frame dropped below ~60fps target threshold (16.6ms)
-    if (avg > 16.6) {
+    // Frame dropped below target threshold (e.g. 8.33ms at 120fps or 16.6ms at 60fps)
+    if (avg > stepDown) {
       _stableFramesCount = 0;
       _unstableFramesCount++;
       if (_unstableFramesCount >= rollingWindowSize) {
@@ -112,7 +135,7 @@ class MotionBudgetService {
           _log('Frametime critical (${avg.toStringAsFixed(1)}ms): Stepped down to LOW quality.');
         }
       }
-    } else if (avg < 13.0) {
+    } else if (avg < stepUp) {
       // Stable and smooth performance
       _unstableFramesCount = 0;
       _stableFramesCount++;
@@ -151,6 +174,7 @@ class MotionBudgetService {
       reducedMotion: reducedMotion,
       quality: _dynamicQuality,
       averageFrameTimeMs: averageFrameTimeMs,
+      targetFps: targetFps,
     );
   }
 
@@ -161,6 +185,7 @@ class MotionBudgetService {
     required bool reducedMotion,
     MotionQualityLevel quality = MotionQualityLevel.high,
     double? averageFrameTimeMs,
+    double targetFps = 60.0,
   }) {
     // Rule 1: Reduced motion or Animation Off = completely static & no particles
     if (reducedMotion || animationIntensity <= 0.05) {
@@ -193,11 +218,13 @@ class MotionBudgetService {
       effectiveQuality = MotionQualityLevel.low;
     }
 
+    final isHighRefresh = targetFps >= 115.0;
+
     switch (effectiveQuality) {
       case MotionQualityLevel.low:
         return MotionQualityProfile(
           quality: MotionQualityLevel.low,
-          maxParticles: (30 * animationIntensity).round(),
+          maxParticles: ((isHighRefresh ? 20 : 30) * animationIntensity).round(),
           bubblesEnabled: false,
           shaderEnabled: false,
           ambientBackgroundEnabled: false,
@@ -209,7 +236,7 @@ class MotionBudgetService {
       case MotionQualityLevel.medium:
         return MotionQualityProfile(
           quality: MotionQualityLevel.medium,
-          maxParticles: (70 * animationIntensity).round(),
+          maxParticles: ((isHighRefresh ? 45 : 70) * animationIntensity).round(),
           bubblesEnabled: false,
           shaderEnabled: false,
           ambientBackgroundEnabled: true,
@@ -221,7 +248,7 @@ class MotionBudgetService {
       case MotionQualityLevel.high:
         return MotionQualityProfile(
           quality: MotionQualityLevel.high,
-          maxParticles: (130 * animationIntensity).round(),
+          maxParticles: ((isHighRefresh ? 75 : 130) * animationIntensity).round(),
           bubblesEnabled: true,
           shaderEnabled: true,
           ambientBackgroundEnabled: true,

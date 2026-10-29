@@ -10,6 +10,12 @@ class MeshGradientPainter extends CustomPainter {
   final double animationProgress; // 0.0 to 1.0 looping
   final bool isStatic; // When reduced motion or animation is Off
 
+  static final Paint _basePaint = Paint();
+  static final Paint _blob1Paint = Paint();
+  static final Paint _blob2Paint = Paint();
+  static final Paint _blob3Paint = Paint();
+  static final Paint _vignettePaint = Paint();
+
   MeshGradientPainter({
     required this.theme,
     required this.animationProgress,
@@ -22,8 +28,8 @@ class MeshGradientPainter extends CustomPainter {
     final h = size.height;
 
     // 1. Draw solid deep base background
-    final basePaint = Paint()..color = theme.backgroundBase;
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), basePaint);
+    _basePaint.color = theme.backgroundBase;
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, h), _basePaint);
 
     if (w <= 0 || h <= 0) return;
 
@@ -39,18 +45,17 @@ class MeshGradientPainter extends CustomPainter {
       h * (0.30 + (isStatic ? 0.0 : 0.12 * cos(t))),
     );
     final blob1Radius = max(w, h) * 0.55;
-    final blob1Paint = Paint()
-      ..shader = RadialGradient(
-        center: Alignment.center,
-        radius: 0.5,
-        colors: [
-          blobs[0].withValues(alpha: 0.38),
-          blobs[0].withValues(alpha: 0.12),
-          blobs[0].withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.55, 1.0],
-      ).createShader(Rect.fromCircle(center: blob1Pos, radius: blob1Radius));
-    canvas.drawCircle(blob1Pos, blob1Radius, blob1Paint);
+    _blob1Paint.shader = RadialGradient(
+      center: Alignment.center,
+      radius: 0.5,
+      colors: [
+        blobs[0].withValues(alpha: 0.38),
+        blobs[0].withValues(alpha: 0.12),
+        blobs[0].withValues(alpha: 0.0),
+      ],
+      stops: const [0.0, 0.55, 1.0],
+    ).createShader(Rect.fromCircle(center: blob1Pos, radius: blob1Radius));
+    canvas.drawCircle(blob1Pos, blob1Radius, _blob1Paint);
 
     // Blob 2: Figure-eight drift (bottom-right to center-right)
     if (blobs.length > 1) {
@@ -59,18 +64,17 @@ class MeshGradientPainter extends CustomPainter {
         h * (0.68 + (isStatic ? 0.0 : 0.13 * sin(t * 1.4))),
       );
       final blob2Radius = max(w, h) * 0.60;
-      final blob2Paint = Paint()
-        ..shader = RadialGradient(
-          center: Alignment.center,
-          radius: 0.5,
-          colors: [
-            blobs[1].withValues(alpha: 0.32),
-            blobs[1].withValues(alpha: 0.10),
-            blobs[1].withValues(alpha: 0.0),
-          ],
-          stops: const [0.0, 0.50, 1.0],
-        ).createShader(Rect.fromCircle(center: blob2Pos, radius: blob2Radius));
-      canvas.drawCircle(blob2Pos, blob2Radius, blob2Paint);
+      _blob2Paint.shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.5,
+        colors: [
+          blobs[1].withValues(alpha: 0.32),
+          blobs[1].withValues(alpha: 0.10),
+          blobs[1].withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.50, 1.0],
+      ).createShader(Rect.fromCircle(center: blob2Pos, radius: blob2Radius));
+      canvas.drawCircle(blob2Pos, blob2Radius, _blob2Paint);
     }
 
     // Blob 3: Floating subtle center-top highlight
@@ -80,33 +84,31 @@ class MeshGradientPainter extends CustomPainter {
         h * (0.18 + (isStatic ? 0.0 : 0.10 * cos(t * 0.9))),
       );
       final blob3Radius = max(w, h) * 0.45;
-      final blob3Paint = Paint()
-        ..shader = RadialGradient(
-          center: Alignment.center,
-          radius: 0.5,
-          colors: [
-            blobs[2].withValues(alpha: 0.28),
-            blobs[2].withValues(alpha: 0.08),
-            blobs[2].withValues(alpha: 0.0),
-          ],
-          stops: const [0.0, 0.45, 1.0],
-        ).createShader(Rect.fromCircle(center: blob3Pos, radius: blob3Radius));
-      canvas.drawCircle(blob3Pos, blob3Radius, blob3Paint);
+      _blob3Paint.shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.5,
+        colors: [
+          blobs[2].withValues(alpha: 0.28),
+          blobs[2].withValues(alpha: 0.08),
+          blobs[2].withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.45, 1.0],
+      ).createShader(Rect.fromCircle(center: blob3Pos, radius: blob3Radius));
+      canvas.drawCircle(blob3Pos, blob3Radius, _blob3Paint);
     }
 
     // Boss level ominous ambient vignette
     if (theme.isBoss) {
-      final borderVignette = Paint()
-        ..shader = RadialGradient(
-          center: Alignment.center,
-          radius: 0.85,
-          colors: [
-            Colors.transparent,
-            theme.primaryAccent.withValues(alpha: isStatic ? 0.25 : (0.2 + 0.12 * sin(t * 2))),
-          ],
-          stops: const [0.65, 1.0],
-        ).createShader(Rect.fromLTWH(0, 0, w, h));
-      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), borderVignette);
+      _vignettePaint.shader = RadialGradient(
+        center: Alignment.center,
+        radius: 0.85,
+        colors: [
+          Colors.transparent,
+          theme.primaryAccent.withValues(alpha: isStatic ? 0.25 : (0.2 + 0.12 * sin(t * 2))),
+        ],
+        stops: const [0.65, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+      canvas.drawRect(Rect.fromLTWH(0, 0, w, h), _vignettePaint);
     }
   }
 

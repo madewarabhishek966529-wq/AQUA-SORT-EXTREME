@@ -90,44 +90,45 @@ class _WinDialogState extends ConsumerState<WinDialog>
     final timeStr =
         '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _skipAnimation,
-      child: Center(
-        child: Material(
-          color: Colors.transparent,
-          child: AnimatedBuilder(
-            animation: _animController,
-            builder: (context, _) {
-              final scale = _scaleAnimation.value.clamp(0.0, 1.0);
-              final starsProgress = _starsAnimation.value;
-              final earnedCoins = _coinsAnimation.value;
+    return RepaintBoundary(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _skipAnimation,
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: AnimatedBuilder(
+              animation: _animController,
+              builder: (context, _) {
+                final scale = _scaleAnimation.value.clamp(0.0, 1.0);
+                final starsProgress = _starsAnimation.value;
+                final earnedCoins = _coinsAnimation.value;
 
-              return Transform.scale(
-                scale: scale <= 0.01 ? 1.0 : scale,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 28),
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    gradient: UIGradients.glassCardGradient(theme),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(
-                      color: theme.secondaryAccent.withValues(alpha: 0.7),
-                      width: 2.0,
+                return Transform.scale(
+                  scale: scale <= 0.01 ? 1.0 : scale,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 28),
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      gradient: UIGradients.glassCardGradient(theme),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: theme.secondaryAccent.withValues(alpha: 0.7),
+                        width: 2.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.secondaryAccent.withValues(alpha: 0.25),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                        ),
+                        const BoxShadow(
+                          color: Colors.black87,
+                          blurRadius: 14,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: theme.secondaryAccent.withValues(alpha: 0.25),
-                        blurRadius: 36,
-                        spreadRadius: 4,
-                      ),
-                      const BoxShadow(
-                        color: Colors.black87,
-                        blurRadius: 24,
-                        offset: Offset(0, 12),
-                      ),
-                    ],
-                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

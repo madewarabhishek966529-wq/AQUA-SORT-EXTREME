@@ -65,6 +65,36 @@ class _EffectsOverlayPainter extends CustomPainter {
 
   final Paint _sharedPaint = Paint();
 
+  static final Paint _baseGlowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+  static final Paint _dashPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2.0
+    ..strokeCap = StrokeCap.round;
+
+  static final Paint _headPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _headGlow = Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+  static final Paint _glowPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
+  static final Paint _corePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
+
+  static final Paint _shinePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round
+    ..color = Colors.white.withValues(alpha: 0.55);
+
+  static final Paint _ripplePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.5;
+
   _EffectsOverlayPainter({
     required this.particlePool,
     this.pourController,
@@ -108,13 +138,9 @@ class _EffectsOverlayPainter extends CustomPainter {
       ..quadraticBezierTo(midX, peakY, end.dx, end.dy);
 
     // Glowing base line
-    final baseGlowPaint = Paint()
-      ..color = theme.primaryAccent.withValues(alpha: 0.30)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.5
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawPath(path, baseGlowPaint);
+    _baseGlowPaint.color = theme.primaryAccent.withValues(alpha: 0.30);
+    _baseGlowPaint.strokeWidth = 3.5;
+    canvas.drawPath(path, _baseGlowPaint);
 
     // Animated traveling pulse indicator
     final metrics = path.computeMetrics();
@@ -127,15 +153,11 @@ class _EffectsOverlayPainter extends CustomPainter {
       const dashSpace = 8.0;
       var distance = (hintPulseProgress * (dashWidth + dashSpace)) % (dashWidth + dashSpace);
 
-      final dashPaint = Paint()
-        ..color = theme.secondaryAccent.withValues(alpha: 0.85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..strokeCap = StrokeCap.round;
+      _dashPaint.color = theme.secondaryAccent.withValues(alpha: 0.85);
 
       while (distance < totalLen) {
         final extract = metric.extractPath(distance, min(distance + dashWidth, totalLen));
-        canvas.drawPath(extract, dashPaint);
+        canvas.drawPath(extract, _dashPaint);
         distance += dashWidth + dashSpace;
       }
 
@@ -143,15 +165,11 @@ class _EffectsOverlayPainter extends CustomPainter {
       final headPos = (hintPulseProgress * totalLen) % totalLen;
       final tangent = metric.getTangentForOffset(headPos);
       if (tangent != null) {
-        final headPaint = Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.fill;
-        canvas.drawCircle(tangent.position, 4.0, headPaint);
+        _headPaint.color = Colors.white;
+        canvas.drawCircle(tangent.position, 4.0, _headPaint);
 
-        final headGlow = Paint()
-          ..color = theme.secondaryAccent.withValues(alpha: 0.8)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-        canvas.drawCircle(tangent.position, 6.0, headGlow);
+        _headGlow.color = theme.secondaryAccent.withValues(alpha: 0.8);
+        canvas.drawCircle(tangent.position, 6.0, _headGlow);
       }
     }
   }
@@ -183,53 +201,44 @@ class _EffectsOverlayPainter extends CustomPainter {
     const baseWidth = 6.5;
 
     // 1. Soft stream outer glow
-    final glowPaint = Paint()
-      ..color = color.withValues(alpha: 0.45)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = baseWidth + 5.0
-      ..strokeCap = StrokeCap.round
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4.0);
-    canvas.drawPath(activePath, glowPaint);
+    _glowPaint.color = color.withValues(alpha: 0.45);
+    _glowPaint.strokeWidth = baseWidth + 5.0;
+    canvas.drawPath(activePath, _glowPaint);
 
-    // 2. Core liquid stream with gradient
+    // 2. High-vibrancy fluid core gradient
     final streamRect = Rect.fromPoints(start, end);
-    final corePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          theme.getLiquidColor(streamColorId!).light,
-          color,
-          theme.getLiquidColor(streamColorId!).dark,
-        ],
-      ).createShader(streamRect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = baseWidth
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(activePath, corePaint);
+    _corePaint.shader = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        theme.getLiquidColor(streamColorId!).light,
+        color,
+        theme.getLiquidColor(streamColorId!).dark,
+      ],
+    ).createShader(streamRect);
+    _corePaint.strokeWidth = baseWidth;
+    canvas.drawPath(activePath, _corePaint);
 
     // 3. Central specular highlight line
-    final shinePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.55)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = baseWidth * 0.35
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(activePath, shinePaint);
+    _shinePaint.strokeWidth = baseWidth * 0.35;
+    canvas.drawPath(activePath, _shinePaint);
 
     // 4. Landing splash ripple when liquid reaches destination
     if (streamProgress >= 0.8) {
       final rippleRadius = 5.0 + 3.0 * sin(streamProgress * pi * 4);
-      final ripplePaint = Paint()
-        ..color = color.withValues(alpha: 0.7)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5;
-      canvas.drawCircle(end, rippleRadius, ripplePaint);
+      _ripplePaint.color = color.withValues(alpha: 0.7);
+      canvas.drawCircle(end, rippleRadius, _ripplePaint);
     }
   }
 
   @override
   bool shouldRepaint(covariant _EffectsOverlayPainter oldDelegate) {
-    return true; // Continuously updated during active particle/stream animations
+    if (particlePool.activeCount > 0) return true;
+    if (pourController != null && pourController!.isAnimating) return true;
+    if (hintSourcePos != null && hintTargetPos != null) return true;
+    return oldDelegate.streamColorId != streamColorId ||
+        oldDelegate.sourceLip != sourceLip ||
+        oldDelegate.targetLip != targetLip ||
+        oldDelegate.theme.id != theme.id;
   }
 }
-

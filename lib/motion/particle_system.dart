@@ -123,6 +123,17 @@ class ParticlePool {
     }
   }
 
+  static final Path _sparkleTemplate = Path()
+    ..moveTo(0, -1.0)
+    ..lineTo(0.25, -0.25)
+    ..lineTo(1.0, 0)
+    ..lineTo(0.25, 0.25)
+    ..lineTo(0, 1.0)
+    ..lineTo(-0.25, 0.25)
+    ..lineTo(-1.0, 0)
+    ..lineTo(-0.25, -0.25)
+    ..close();
+
   /// Renders all active particles onto the canvas without object allocations.
   void draw(Canvas canvas, Paint sharedPaint) {
     for (var i = 0; i < maxCapacity; i++) {
@@ -140,8 +151,10 @@ class ParticlePool {
           canvas.translate(p.x, p.y);
           canvas.rotate(p.rotation);
           sharedPaint.style = PaintingStyle.fill;
+          final halfW = p.size * 0.8;
+          final halfH = p.size * 0.45;
           canvas.drawRect(
-            Rect.fromCenter(center: Offset.zero, width: p.size * 1.6, height: p.size * 0.9),
+            Rect.fromLTRB(-halfW, -halfH, halfW, halfH),
             sharedPaint,
           );
           canvas.restore();
@@ -150,19 +163,10 @@ class ParticlePool {
         case ParticleType.sparkle:
           canvas.save();
           canvas.translate(p.x, p.y);
+          canvas.scale(p.size, p.size);
           canvas.rotate(p.rotation);
           sharedPaint.style = PaintingStyle.fill;
-          final path = Path()
-            ..moveTo(0, -p.size)
-            ..lineTo(p.size * 0.25, -p.size * 0.25)
-            ..lineTo(p.size, 0)
-            ..lineTo(p.size * 0.25, p.size * 0.25)
-            ..lineTo(0, p.size)
-            ..lineTo(-p.size * 0.25, p.size * 0.25)
-            ..lineTo(-p.size, 0)
-            ..lineTo(-p.size * 0.25, -p.size * 0.25)
-            ..close();
-          canvas.drawPath(path, sharedPaint);
+          canvas.drawPath(_sparkleTemplate, sharedPaint);
           canvas.restore();
           break;
 
