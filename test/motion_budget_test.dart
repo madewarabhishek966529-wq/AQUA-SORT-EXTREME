@@ -116,5 +116,55 @@ void main() {
       expect(service.dynamicQuality, equals(MotionQualityLevel.high));
       expect(service.decisionLogs.last, contains('Recovered to HIGH'));
     });
+
+    test('120 FPS Mode: Enforces 8.33ms budget, steps down on >8.33ms and recovers under 6.5ms', () {
+      final highFpsService = MotionBudgetService.target120Fps(rollingWindowSize: 20);
+      expect(highFpsService.targetFps, equals(120.0));
+      expect(highFpsService.targetBudgetMs, closeTo(8.33, 0.01));
+      expect(highFpsService.stepDownThresholdMs, closeTo(8.33, 0.01));
+      expect(highFpsService.stepUpThresholdMs, closeTo(6.50, 0.01));
+
+      // Feed 11ms frames (> 8.33ms target)
+      for (var i = 0; i < 25; i++) {
+        highFpsService.recordFrameTime(11.0);
+      }
+      expect(highFpsService.dynamicQuality, equals(MotionQualityLevel.medium));
+
+      for (var i = 0; i < 25; i++) {
+        highFpsService.recordFrameTime(11.0);
+      }
+      expect(highFpsService.dynamicQuality, equals(MotionQualityLevel.low));
+
+      // Recover by feeding 4ms frames (< 6.5ms target)
+      for (var i = 0; i < 45; i++) {
+        highFpsService.recordFrameTime(4.0);
+      }
+      expect(highFpsService.dynamicQuality, equals(MotionQualityLevel.medium));
+
+      for (var i = 0; i < 25; i++) {
+        highFpsService.recordFrameTime(4.0);
+      }
+      expect(highFpsService.dynamicQuality, equals(MotionQualityLevel.high));
+    });
+
+    test('120 FPS Mode: Particle caps adapt to high refresh rate headroom', () {
+      final p120 = MotionBudgetService.calculateProfile(
+        tubeCount: 8,
+        animationIntensity: 1.0,
+        reducedMotion: false,
+        quality: MotionQualityLevel.high,
+        targetFps: 120.0,
+      );
+      expect(p120.maxParticles, equals(75));
+
+      final p60 = MotionBudgetService.calculateProfile(
+        tubeCount: 8,
+        animationIntensity: 1.0,
+        reducedMotion: false,
+        quality: MotionQualityLevel.high,
+        targetFps: 60.0,
+      );
+      expect(p60.maxParticles, equals(130));
+    });
   });
 }

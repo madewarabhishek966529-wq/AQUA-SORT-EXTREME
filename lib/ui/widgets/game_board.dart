@@ -82,13 +82,10 @@ class _GameBoardState extends ConsumerState<GameBoard>
     });
 
     _particlePool = ParticlePool(maxCapacity: 160);
-    _budgetService = MotionBudgetService();
+    _budgetService = MotionBudgetService.target120Fps();
 
     // Pour sequence controller
     _pourController = PourAnimationController(vsync: this);
-    _pourController.addListener(() {
-      if (mounted) setState(() {});
-    });
 
     // Invalid shake animation: 250ms
     _shakeAnimController = AnimationController(
@@ -160,8 +157,8 @@ class _GameBoardState extends ConsumerState<GameBoard>
   void _onAmbientTick() {
     if (!mounted) return;
     if (_particlePool.activeCount > 0) {
-      _particlePool.update(0.016); // ~60fps simulation delta
-      setState(() {});
+      // 120 FPS physics update: EffectsLayer repaints via AnimatedBuilder directly
+      _particlePool.update(0.00833);
     }
   }
 
@@ -377,7 +374,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
       widget.audioService.playVictory();
       final size = MediaQuery.of(context).size;
       final colors = theme.standardLiquidColors.map((c) => c.base).toList();
-      _particlePool.emitWinConfetti(size, colors, min(75, motionProfile.maxParticles));
+      _particlePool.emitWinConfetti(size, colors, min(45, motionProfile.maxParticles));
     }
 
     // Check newly completed tubes
@@ -467,13 +464,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
         },
         child: Stack(
           children: [
-            // 1. Slow animated drifting background gradient mesh
+            // 1. Slow animated drifting background gradient mesh isolated on own GPU layer
             Positioned.fill(
-              child: CustomPaint(
-                painter: MeshGradientPainter(
-                  theme: theme,
-                  animationProgress: ambientProgress,
-                  isStatic: motionProfile.isStatic || !motionProfile.ambientBackgroundEnabled,
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: _ambientLoopController,
+                  builder: (context, _) => CustomPaint(
+                    painter: MeshGradientPainter(
+                      theme: theme,
+                      animationProgress: _ambientLoopController.value,
+                      isStatic: motionProfile.isStatic || !motionProfile.ambientBackgroundEnabled,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -491,7 +493,6 @@ class _GameBoardState extends ConsumerState<GameBoard>
                     animation: Listenable.merge([
                       _pourController,
                       _shakeAnimController,
-                      _ambientLoopController,
                       _entranceAnimController,
                     ]),
                     builder: (context, _) {
@@ -508,6 +509,15 @@ class _GameBoardState extends ConsumerState<GameBoard>
                           final isHintTo = gameState.hintMove?.to == index;
                           final isValidDest = validDestinations.contains(index);
                           final isFocused = _hasKeyboardFocus && _focusedIndex == index;
+
+                          final isPourSource = _pourController.isAnimating &&
+                              _pourController.activeEvent?.from == index;
+                          final isPourTarget = _pourController.isAnimating &&
+                              _pourController.activeEvent?.to == index;
+                          final isActiveTube = isSelected || isHintFrom || isHintTo || isPourSource || isPourTarget || isShaking;
+
+                          final tubeWaveAmp = (isActiveTube && motionProfile.waveAnimationEnabled) ? 1.4 : 0.0;
+                          final tubeBubbles = (isActiveTube && motionProfile.bubblesEnabled);
 
                           Color? glowColor;
                           if (isSelected) {
@@ -530,72 +540,77 @@ class _GameBoardState extends ConsumerState<GameBoard>
 
                           if (isSelected || isHintFrom) {
                             liftOffset = -18.0;
-                          } else if (_pourController.isAnimating &&
-                              _pourController.activeEvent?.from == index) {
+                          } else if (isPourSource) {
                             liftOffset = _pourController.liftOffset;
                             tiltAngle = _pourController.tiltAngle;
                           }
 
                           // Staggered cascade entrance delay per tube
+                          final hasEntrance = !motionProfile.isStatic && entranceVal < 1.0;
                           var entranceY = 0.0;
                           var entranceOpacity = 1.0;
-                          if (!motionProfile.isStatic && entranceVal < 1.0) {
+                          if (hasEntrance) {
                             final delay = (index * 0.015).clamp(0.0, 0.60);
                             final t = ((entranceVal - delay) / (1.0 - delay)).clamp(0.0, 1.0);
                             entranceY = (1.0 - MotionTokens.springEase.transform(t)) * 40.0;
                             entranceOpacity = t;
                           }
 
-                          // Subtle idle tube breathing (0.5% scale oscillation)
-                          var scale = 1.0;
-                          if (!motionProfile.isStatic &&
-                              !isSelected &&
-                              !_pourController.isAnimating &&
-                              tubeCount <= 30) {
-                            scale = 1.0 + 0.005 * sin(ambientProgress * 2 * pi + index * 0.4);
+                          var liquidMultiplier = 1.0;
+                          if (isPourSource) {
+                            liquidMultiplier = 1.0 - (_pourController.streamProgress * 0.5);
                           }
 
-                          return Transform.translate(
-                            offset: Offset(shakeOffset, liftOffset + entranceY),
-                            child: Transform.scale(
-                              scale: scale,
-                              child: Opacity(
-                                opacity: entranceOpacity,
-                                child: RepaintBoundary(
-                                  key: Key('tube_boundary_$index'),
-                                  child: GestureDetector(
-                                    key: Key('tube_$index'),
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => _onTubeTapped(index),
-                                    child: SizedBox(
-                                      key: _tubeKeys[index],
-                                      width: tubeWidth,
-                                      height: tubeHeight,
-                                      child: CustomPaint(
-                                        painter: TubePainter(
-                                          tube: tube,
-                                          isSelected: isSelected || isHintFrom || isHintTo,
-                                          isFocused: isFocused,
-                                          isValidDestination: isValidDest,
-                                          showColorblindCues: widget.showColorblindCues,
-                                          colorblindPalette: widget.colorblindPalette,
-                                          shakeOffset: shakeOffset,
-                                          tiltAngle: tiltAngle,
-                                          glowColor: glowColor,
-                                          theme: theme,
-                                          skin: skin,
-                                          wavePhase: wavePhase,
-                                          waveAmplitude: motionProfile.waveAnimationEnabled ? 1.4 : 0.0,
-                                          enableBubbles: motionProfile.bubblesEnabled,
-                                          bubbleTime: bubbleTime,
-                                        ),
-                                      ),
-                                    ),
+                          Widget tubeWidget = RepaintBoundary(
+                            key: Key('tube_boundary_$index'),
+                            child: GestureDetector(
+                              key: Key('tube_$index'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _onTubeTapped(index),
+                              child: SizedBox(
+                                key: _tubeKeys[index],
+                                width: tubeWidth,
+                                height: tubeHeight,
+                                child: CustomPaint(
+                                  painter: TubePainter(
+                                    tube: tube,
+                                    isSelected: isSelected || isHintFrom || isHintTo,
+                                    isFocused: isFocused,
+                                    isValidDestination: isValidDest,
+                                    showColorblindCues: widget.showColorblindCues,
+                                    colorblindPalette: widget.colorblindPalette,
+                                    shakeOffset: shakeOffset,
+                                    tiltAngle: tiltAngle,
+                                    glowColor: glowColor,
+                                    theme: theme,
+                                    skin: skin,
+                                    wavePhase: wavePhase,
+                                    waveAmplitude: tubeWaveAmp,
+                                    enableBubbles: tubeBubbles,
+                                    bubbleTime: bubbleTime,
+                                    liquidLevelMultiplier: liquidMultiplier,
                                   ),
                                 ),
                               ),
                             ),
                           );
+
+                          if (hasEntrance && entranceOpacity < 1.0) {
+                            tubeWidget = Opacity(
+                              opacity: entranceOpacity,
+                              child: tubeWidget,
+                            );
+                          }
+
+                          final totalOffsetY = liftOffset + entranceY;
+                          if (shakeOffset != 0.0 || totalOffsetY != 0.0) {
+                            tubeWidget = Transform.translate(
+                              offset: Offset(shakeOffset, totalOffsetY),
+                              child: tubeWidget,
+                            );
+                          }
+
+                          return tubeWidget;
                         }),
                       );
                     },
@@ -606,24 +621,26 @@ class _GameBoardState extends ConsumerState<GameBoard>
 
             // 3. Effects Layer (Fluid Stream, Droplets, Splashes, Confetti, Hint Path)
             Positioned.fill(
-              child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _pourController,
-                  _ambientLoopController,
-                ]),
-                builder: (context, _) {
-                  return EffectsLayer(
-                    particlePool: _particlePool,
-                    pourController: _pourController,
-                    sourceLipPosition: streamStart,
-                    targetLipPosition: streamEnd,
-                    streamColorId: streamColorId,
-                    theme: theme,
-                    hintSourcePos: hintSourcePos,
-                    hintTargetPos: hintTargetPos,
-                    hintPulseProgress: (ambientProgress * 3.5) % 1.0,
-                  );
-                },
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([
+                    _pourController,
+                    _ambientLoopController,
+                  ]),
+                  builder: (context, _) {
+                    return EffectsLayer(
+                      particlePool: _particlePool,
+                      pourController: _pourController,
+                      sourceLipPosition: streamStart,
+                      targetLipPosition: streamEnd,
+                      streamColorId: streamColorId,
+                      theme: theme,
+                      hintSourcePos: hintSourcePos,
+                      hintTargetPos: hintTargetPos,
+                      hintPulseProgress: (ambientProgress * 3.5) % 1.0,
+                    );
+                  },
+                ),
               ),
             ),
 

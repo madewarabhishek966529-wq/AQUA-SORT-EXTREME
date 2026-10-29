@@ -53,11 +53,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             children: [
               const TopBar(),
               Expanded(
-                child: GameBoard(
-                  showColorblindCues: settings.colorblindPalette,
-                  colorblindPalette: settings.colorblindPalette,
-                  reducedMotion: settings.reducedMotion,
-                  audioService: AudioService(settingsService: settingsService),
+                child: RepaintBoundary(
+                  child: GameBoard(
+                    showColorblindCues: settings.colorblindPalette,
+                    colorblindPalette: settings.colorblindPalette,
+                    reducedMotion: settings.reducedMotion,
+                    audioService: AudioService(settingsService: settingsService),
+                  ),
                 ),
               ),
               const BottomBar(),

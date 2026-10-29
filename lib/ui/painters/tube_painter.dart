@@ -350,7 +350,7 @@ class TubePainter extends CustomPainter {
     required LiquidColor liquidColor,
   }) {
     final wavePath = Path()..moveTo(0, layerTop);
-    const steps = 12;
+    const steps = 8;
     final amp = waveAmplitude;
 
     for (var s = 0; s <= steps; s++) {

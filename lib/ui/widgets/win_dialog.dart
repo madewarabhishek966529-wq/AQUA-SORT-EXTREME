@@ -315,8 +315,9 @@ class _WinDialogState extends ConsumerState<WinDialog>
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStat(ThemePalette theme, String label, String value) {
     return Column(
