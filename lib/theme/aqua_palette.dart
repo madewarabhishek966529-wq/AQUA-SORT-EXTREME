@@ -103,7 +103,9 @@ class ThemePalette {
 
     // Deterministic golden ratio hue generation for extreme boards (up to 60+ bottles)
     final hue = ((colorId * 137.508) % 360).toDouble();
-    final baseColor = HSLColor.fromAHSL(1.0, hue, 0.85, 0.55).toColor();
+    // Alternate dark and light to maximize contrast between adjacent generated colors
+    final lightness = (colorId % 2 == 0) ? 0.35 : 0.70;
+    final baseColor = HSLColor.fromAHSL(1.0, hue, 0.90, lightness).toColor();
     return LiquidColor.fromBase(baseColor);
   }
 
@@ -237,7 +239,6 @@ class AquaPalette {
     glassBorder: const Color(0x38FFFFFF),
     glassHighlight: const Color(0x73FFFFFF),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 0,
       glowAlpha: 0.55,
     ),
     colorblindLiquidColors: colorblindSet,
@@ -263,7 +264,6 @@ class AquaPalette {
     glassBorder: const Color(0x40E040FB),
     glassHighlight: const Color(0x80FFFFFF),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 40,
       glowAlpha: 0.65,
     ),
     colorblindLiquidColors: colorblindSet,
@@ -289,7 +289,6 @@ class AquaPalette {
     glassBorder: const Color(0x40FF7043),
     glassHighlight: const Color(0x80FFE0B2),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 15,
       glowAlpha: 0.55,
     ),
     colorblindLiquidColors: colorblindSet,
@@ -315,8 +314,7 @@ class AquaPalette {
     glassBorder: const Color(0x4034D399),
     glassHighlight: const Color(0x80A7F3D0),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 90,
-      glowAlpha: 0.6,
+      glowAlpha: 0.60,
     ),
     colorblindLiquidColors: colorblindSet,
   );
@@ -341,7 +339,6 @@ class AquaPalette {
     glassBorder: const Color(0x386EE7B7),
     glassHighlight: const Color(0x75A7F3D0),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 120,
       glowAlpha: 0.55,
     ),
     colorblindLiquidColors: colorblindSet,
@@ -367,8 +364,7 @@ class AquaPalette {
     glassBorder: const Color(0x50EF4444),
     glassHighlight: const Color(0x80C084FC),
     standardLiquidColors: _createVibrantPalette(
-      hueShift: 270,
-      glowAlpha: 0.7,
+      glowAlpha: 0.70,
     ),
     colorblindLiquidColors: colorblindSet,
     isBoss: true,
@@ -390,37 +386,125 @@ class AquaPalette {
   }
 
   /// Internal helper generating 16 core distinct liquid colors.
+  /// Handcrafted with high perceptual contrast so no two colors are ambiguous.
+  /// When colors share a family (e.g. blues, greens, reds, purples),
+  /// one is distinctly LIGHT/BRIGHT and the other is distinctly DARK/DEEP.
   static List<LiquidColor> _createVibrantPalette({
-    double hueShift = 0.0,
     double glowAlpha = 0.55,
   }) {
-    const rawBases = <Color>[
-      Color(0xFF00E5FF), // 1: Cyan
-      Color(0xFFFF1744), // 2: Crimson
-      Color(0xFFFFD600), // 3: Gold
-      Color(0xFF00E676), // 4: Neon Green
-      Color(0xFFD500F9), // 5: Radiant Magenta
-      Color(0xFFFF6D00), // 6: Sunset Orange
-      Color(0xFF2979FF), // 7: Royal Blue
-      Color(0xFF76FF03), // 8: Lime Green
-      Color(0xFFFF4081), // 9: Hot Pink
-      Color(0xFF651FFF), // 10: Indigo
-      Color(0xFF00B0FF), // 11: Sky Blue
-      Color(0xFF1DE9B6), // 12: Aquamarine
-      Color(0xFFFF9100), // 13: Amber
-      Color(0xFFAEEA00), // 14: Chartreuse
-      Color(0xFFE040FB), // 15: Neon Purple
-      Color(0xFFFF5252), // 16: Coral
+    return [
+      // 1. Light Sky Cyan (Very bright, luminous electric ice blue)
+      LiquidColor(
+        base: const Color(0xFF00E5FF),
+        light: const Color(0xFF84FFFF),
+        dark: const Color(0xFF0097A7),
+        glow: const Color(0xFF00E5FF).withValues(alpha: glowAlpha),
+      ),
+      // 2. Deep Ruby Crimson (Rich, vivid blood red)
+      LiquidColor(
+        base: const Color(0xFFD50000),
+        light: const Color(0xFFFF5252),
+        dark: const Color(0xFF850000),
+        glow: const Color(0xFFD50000).withValues(alpha: glowAlpha),
+      ),
+      // 3. Bright Canary Yellow (High-key radiant sunny yellow)
+      LiquidColor(
+        base: const Color(0xFFFFD600),
+        light: const Color(0xFFFFFF52),
+        dark: const Color(0xFFC79A00),
+        glow: const Color(0xFFFFD600).withValues(alpha: glowAlpha),
+      ),
+      // 4. Deep Emerald Forest (Very dark, rich pine green)
+      LiquidColor(
+        base: const Color(0xFF005929),
+        light: const Color(0xFF009647),
+        dark: const Color(0xFF002B13),
+        glow: const Color(0xFF005929).withValues(alpha: glowAlpha),
+      ),
+      // 5. Hot Bubblegum Magenta (Ultra-vivid hot pink)
+      LiquidColor(
+        base: const Color(0xFFFF007F),
+        light: const Color(0xFFFF66B2),
+        dark: const Color(0xFFB30059),
+        glow: const Color(0xFFFF007F).withValues(alpha: glowAlpha),
+      ),
+      // 6. Blaze Tangerine Orange (Bright pure orange)
+      LiquidColor(
+        base: const Color(0xFFFF6D00),
+        light: const Color(0xFFFF9E40),
+        dark: const Color(0xFFB84500),
+        glow: const Color(0xFFFF6D00).withValues(alpha: glowAlpha),
+      ),
+      // 7. Deep Royal Cobalt (Very dark midnight royal navy)
+      LiquidColor(
+        base: const Color(0xFF1A237E),
+        light: const Color(0xFF3949AB),
+        dark: const Color(0xFF0C1045),
+        glow: const Color(0xFF1A237E).withValues(alpha: glowAlpha),
+      ),
+      // 8. Neon Electric Lime (Super bright light lime green)
+      LiquidColor(
+        base: const Color(0xFF76FF03),
+        light: const Color(0xFFB2FF59),
+        dark: const Color(0xFF43A047),
+        glow: const Color(0xFF76FF03).withValues(alpha: glowAlpha),
+      ),
+      // 9. Deep Grape Violet (Rich dark imperial purple)
+      LiquidColor(
+        base: const Color(0xFF4A148C),
+        light: const Color(0xFF7B1FA2),
+        dark: const Color(0xFF220547),
+        glow: const Color(0xFF4A148C).withValues(alpha: glowAlpha),
+      ),
+      // 10. Rich Chocolate Espresso (Deep earthy dark brown)
+      LiquidColor(
+        base: const Color(0xFF5D4037),
+        light: const Color(0xFF8D6E63),
+        dark: const Color(0xFF321911),
+        glow: const Color(0xFF5D4037).withValues(alpha: glowAlpha),
+      ),
+      // 11. Pastel Soft Lavender (Very light pale lilac)
+      LiquidColor(
+        base: const Color(0xFFD1C4E9),
+        light: const Color(0xFFEDE7F6),
+        dark: const Color(0xFF9575CD),
+        glow: const Color(0xFFD1C4E9).withValues(alpha: glowAlpha),
+      ),
+      // 12. Vibrant Persian Teal (Bright rich turquoise sea)
+      LiquidColor(
+        base: const Color(0xFF00BFA5),
+        light: const Color(0xFF64FFDA),
+        dark: const Color(0xFF00796B),
+        glow: const Color(0xFF00BFA5).withValues(alpha: glowAlpha),
+      ),
+      // 13. Golden Amber Ochre (Warm mustard bronze gold)
+      LiquidColor(
+        base: const Color(0xFFD48806),
+        light: const Color(0xFFFFC069),
+        dark: const Color(0xFF874D00),
+        glow: const Color(0xFFD48806).withValues(alpha: glowAlpha),
+      ),
+      // 14. Pale Seafoam Mint (Very light frosty pale mint)
+      LiquidColor(
+        base: const Color(0xFFA7F3D0),
+        light: const Color(0xFFD1FAE5),
+        dark: const Color(0xFF34D399),
+        glow: const Color(0xFFA7F3D0).withValues(alpha: glowAlpha),
+      ),
+      // 15. Dark Burgundy Wine (Extremely dark blood maroon)
+      LiquidColor(
+        base: const Color(0xFF4A0011),
+        light: const Color(0xFF800020),
+        dark: const Color(0xFF230007),
+        glow: const Color(0xFF4A0011).withValues(alpha: glowAlpha),
+      ),
+      // 16. Platinum Silver Ice (Very light cool silver white)
+      LiquidColor(
+        base: const Color(0xFFE2E8F0),
+        light: const Color(0xFFFFFFFF),
+        dark: const Color(0xFF94A3B8),
+        glow: const Color(0xFFE2E8F0).withValues(alpha: glowAlpha),
+      ),
     ];
-
-    return rawBases.map((base) {
-      if (hueShift == 0.0) {
-        return LiquidColor.fromBase(base);
-      }
-      final hsl = HSLColor.fromColor(base);
-      final newHue = (hsl.hue + hueShift) % 360.0;
-      final shifted = hsl.withHue(newHue).toColor();
-      return LiquidColor.fromBase(shifted);
-    }).toList();
   }
 }

@@ -224,9 +224,11 @@ class _EffectsOverlayPainter extends CustomPainter {
     canvas.drawPath(activePath, _shinePaint);
 
     // 4. Landing splash ripple when liquid reaches destination
-    if (streamProgress >= 0.8) {
-      final rippleRadius = 5.0 + 3.0 * sin(streamProgress * pi * 4);
-      _ripplePaint.color = color.withValues(alpha: 0.7);
+    if (streamProgress >= 0.45) {
+      final waveProgress = ((streamProgress * 5) % 1.0);
+      final rippleRadius = 4.0 + 7.0 * waveProgress;
+      final rippleAlpha = (1.0 - waveProgress) * 0.75;
+      _ripplePaint.color = color.withValues(alpha: rippleAlpha);
       canvas.drawCircle(end, rippleRadius, _ripplePaint);
     }
   }

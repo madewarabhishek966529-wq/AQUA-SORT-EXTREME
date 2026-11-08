@@ -67,6 +67,25 @@ void main() {
         }
       }
     });
+    test('Standard liquid palette has high separation between all 16 colors with no confusing pairs', () {
+      final stdColors = AquaPalette.ocean.standardLiquidColors;
+      expect(stdColors.length, equals(16));
+
+      for (var i = 0; i < stdColors.length; i++) {
+        for (var j = i + 1; j < stdColors.length; j++) {
+          final c1 = stdColors[i].base;
+          final c2 = stdColors[j].base;
+          final diff = (c1.r - c2.r).abs() +
+              (c1.g - c2.g).abs() +
+              (c1.b - c2.b).abs();
+          expect(
+            diff,
+            greaterThanOrEqualTo(0.20),
+            reason: 'Liquid colors $i (${c1.toARGB32().toRadixString(16)}) and $j (${c2.toARGB32().toRadixString(16)}) are too similar (diff: $diff < 0.20)!',
+          );
+        }
+      }
+    });
   });
 }
 

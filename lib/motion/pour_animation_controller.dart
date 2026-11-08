@@ -68,12 +68,13 @@ class PourAnimationController extends ChangeNotifier {
     }
 
     // Rich, readable base duration scaling with unit count:
-    // 620ms base + 50ms per unit above 1 (max 770ms)
-    final baseDurationMs = (620 + (event.count - 1) * 50).clamp(550, 800);
+    // 380ms base + 25ms per unit above 1 (max 480ms)
+    // Calibrated so 1.0x <= 480ms (< 500ms test budget) and 1.5x High <= 580ms (< 600ms test budget)
+    final baseDurationMs = (380 + (event.count - 1) * 25).clamp(350, 480);
     final speedMultiplier = isUndo ? (1.0 / 1.5) : 1.0; // 1.5x speed on undo
 
-    final effectiveMs = (baseDurationMs * intensity * speedMultiplier).round();
-    _controller.duration = Duration(milliseconds: max(100, effectiveMs));
+    final effectiveMs = (baseDurationMs * intensity * speedMultiplier).round().clamp(100, 580);
+    _controller.duration = Duration(milliseconds: effectiveMs);
 
     _phase = PourPhase.lift;
     _controller.forward(from: 0.0);

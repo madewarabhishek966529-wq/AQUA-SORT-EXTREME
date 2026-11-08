@@ -59,6 +59,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
   final Set<int> _completedTubes = {};
 
   PourEvent? _lastHandledPourEvent;
+  Offset? _activeFlightDelta;
   int? _prevSelectedTubeIndex;
   int _focusedIndex = 0;
   bool _hasKeyboardFocus = false;
@@ -189,6 +190,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
   }
 
   void _skipAnimation() {
+    _activeFlightDelta = null;
     if (_pourController.isAnimating) {
       _pourController.fastForward();
     }
@@ -387,6 +389,20 @@ class _GameBoardState extends ConsumerState<GameBoard>
       _ambientLoopController.repeat();
     }
 
+    // Manage selection animation controller
+    if (gameState.selectedTubeIndex != _prevSelectedTubeIndex) {
+      if (gameState.selectedTubeIndex != null) {
+        _selectionAnimController.forward(from: 0.0);
+      } else {
+        _selectionAnimController.reset();
+      }
+      _prevSelectedTubeIndex = gameState.selectedTubeIndex;
+    }
+
+    final (tubeWidth, tubeHeight) = _getTubeDimensions(tubeCount);
+    final tubeSpacing = tubeCount > 24 ? 10.0 : 16.0;
+    final tubeRunSpacing = tubeCount > 24 ? 16.0 : 24.0;
+
     // Handle incoming PourEvent via PourAnimationController
     if (gameState.activePourEvent != null &&
         gameState.activePourEvent != _lastHandledPourEvent) {
@@ -395,6 +411,13 @@ class _GameBoardState extends ConsumerState<GameBoard>
       final isUndo = gameState.moves < _prevMoves;
       _prevMoves = gameState.moves;
 
+      _activeFlightDelta = _calculateFlightOffset(
+        fromIndex: event.from,
+        toIndex: event.to,
+        tubeWidth: tubeWidth,
+        tubeHeight: tubeHeight,
+      );
+
       // Start pour sequence immediately
       _pourController.startPour(
         event,
@@ -402,6 +425,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
         reducedMotion: settings.reducedMotion,
         isUndo: isUndo,
         onComplete: () {
+          _activeFlightDelta = null;
           ref.read(gameControllerProvider.notifier).unlockInput();
         },
       );
@@ -454,10 +478,6 @@ class _GameBoardState extends ConsumerState<GameBoard>
         }
       }
     }
-
-    final (tubeWidth, tubeHeight) = _getTubeDimensions(tubeCount);
-    final tubeSpacing = tubeCount > 24 ? 10.0 : 16.0;
-    final tubeRunSpacing = tubeCount > 24 ? 16.0 : 24.0;
 
     // Stream coordinates for EffectsLayer
     Offset? streamStart;
@@ -552,6 +572,8 @@ class _GameBoardState extends ConsumerState<GameBoard>
                     animation: Listenable.merge([
                       _pourController,
                       _shakeAnimController,
+                      _selectionAnimController,
+                      _ambientLoopController,
                       _entranceAnimController,
                     ]),
                     builder: (context, _) {
@@ -573,10 +595,6 @@ class _GameBoardState extends ConsumerState<GameBoard>
                               _pourController.activeEvent?.from == index;
                           final isPourTarget = _pourController.isAnimating &&
                               _pourController.activeEvent?.to == index;
-                          final isActiveTube = isSelected || isHintFrom || isHintTo || isPourSource || isPourTarget || isShaking;
-
-                          final tubeWaveAmp = (isActiveTube && motionProfile.waveAnimationEnabled) ? 1.4 : 0.0;
-                          final tubeBubbles = (isActiveTube && motionProfile.bubblesEnabled);
 
                           Color? glowColor;
                           if (isSelected) {
@@ -587,24 +605,57 @@ class _GameBoardState extends ConsumerState<GameBoard>
                             glowColor = const Color(0xFF00E676);
                           }
 
-                          // Calculate shake offset
+                          // 1. Calculate shake offset for invalid move feedback
                           var shakeOffset = 0.0;
                           if (isShaking && _shakeAnimController.isAnimating) {
                             shakeOffset = sin(_shakeAnimController.value * pi * 4) * 8.0;
                           }
 
-                          // Calculate lift & tilt from PourAnimationController
+                          // 2. Calculate lift, flight travel, tilt, elevation, and scaling
                           var liftOffset = 0.0;
+                          var flightDx = 0.0;
+                          var flightDy = 0.0;
                           var tiltAngle = 0.0;
+                          var elevation = 0.0;
+                          var tubeScale = 1.0;
 
                           if (isSelected || isHintFrom) {
-                            liftOffset = -18.0;
+                            // Juicy spring lift and gentle hovering float
+                            final springT = MotionTokens.springEase.transform(_selectionAnimController.value);
+                            final hoverBreath = motionProfile.isStatic
+                                ? 0.0
+                                : sin(ambientProgress * 2 * pi * 2) * 2.5;
+                            liftOffset = (-20.0 * springT) + hoverBreath;
+                            elevation = 0.35 * springT;
                           } else if (isPourSource) {
-                            liftOffset = _pourController.liftOffset;
-                            tiltAngle = _pourController.tiltAngle;
+                            final flightTarget = _activeFlightDelta ??
+                                _calculateFlightOffset(
+                                  fromIndex: _pourController.activeEvent!.from,
+                                  toIndex: _pourController.activeEvent!.to,
+                                  tubeWidth: tubeWidth,
+                                  tubeHeight: tubeHeight,
+                                );
+                            final isTargetRight = flightTarget.dx >= 0;
+                            final tiltDir = isTargetRight ? 1.0 : -1.0;
+
+                            final flightP = _pourController.flightProgress;
+                            final flightArc = _pourController.flightArcY;
+                            flightDx = flightTarget.dx * flightP;
+                            flightDy = flightTarget.dy * flightP + flightArc + _pourController.liftOffset;
+
+                            tiltAngle = _pourController.getTiltAngleForDirection(tiltDir);
+                            elevation = flightP;
+                          } else if (isValidDest && !motionProfile.isStatic) {
+                            // Gentle inviting pulse for valid destination tubes
+                            final pulse = sin(wavePhase * 0.8 + index);
+                            tubeScale = 1.0 + 0.035 * pulse;
+                          } else if (!motionProfile.isStatic && motionProfile.ambientBackgroundEnabled) {
+                            // Gentle ambient breathing for idle tubes
+                            final breath = sin(wavePhase * 0.35 + index);
+                            tubeScale = 1.0 + 0.006 * breath;
                           }
 
-                          // Staggered cascade entrance delay per tube
+                          // 3. Staggered cascade entrance delay per tube on level load
                           final hasEntrance = !motionProfile.isStatic && entranceVal < 1.0;
                           var entranceY = 0.0;
                           var entranceOpacity = 1.0;
@@ -615,10 +666,58 @@ class _GameBoardState extends ConsumerState<GameBoard>
                             entranceOpacity = t;
                           }
 
-                          var liquidMultiplier = 1.0;
-                          if (isPourSource) {
-                            liquidMultiplier = 1.0 - (_pourController.streamProgress * 0.5);
+                          // 4. Liquid synchronizer: live drain/fill without mutating PuzzleState
+                          List<int>? renderUnits;
+                          var topLayerRatio = 1.0;
+                          var tubeWaveAmp = 0.5;
+
+                          if (isPourSource && _pourController.activeEvent != null) {
+                            final event = _pourController.activeEvent!;
+                            final drainP = _pourController.drainProgress;
+                            final remainingUnitsTotal = (1.0 - drainP) * event.count;
+                            final fullRemaining = remainingUnitsTotal.floor();
+                            final fractional = remainingUnitsTotal - fullRemaining;
+
+                            if (fullRemaining > 0 || fractional > 0.001) {
+                              renderUnits = [
+                                ...tube.units,
+                                ...List.filled(fullRemaining + (fractional > 0.001 ? 1 : 0), event.color),
+                              ];
+                              topLayerRatio = fractional > 0.001 ? fractional : 1.0;
+                            } else {
+                              renderUnits = tube.units;
+                              topLayerRatio = 1.0;
+                            }
+                            tubeWaveAmp = motionProfile.waveAnimationEnabled ? 1.8 : 0.0;
+                          } else if (isPourTarget && _pourController.activeEvent != null) {
+                            final event = _pourController.activeEvent!;
+                            final fillP = _pourController.fillProgress;
+                            final baseCount = (tube.units.length - event.count).clamp(0, tube.units.length);
+                            final baseUnits = tube.units.take(baseCount).toList();
+
+                            final addedUnitsTotal = fillP * event.count;
+                            final fullAdded = addedUnitsTotal.floor();
+                            final fractional = addedUnitsTotal - fullAdded;
+
+                            if (fullAdded > 0 || fractional > 0.001) {
+                              renderUnits = [
+                                ...baseUnits,
+                                ...List.filled(fullAdded + (fractional > 0.001 ? 1 : 0), event.color),
+                              ];
+                              topLayerRatio = fractional > 0.001 ? fractional : 1.0;
+                            } else {
+                              renderUnits = baseUnits;
+                              topLayerRatio = 1.0;
+                            }
+                            tubeWaveAmp = motionProfile.waveAnimationEnabled
+                                ? (_pourController.phase == PourPhase.stream ? 3.6 : 1.6)
+                                : 0.0;
+                          } else {
+                            final isActiveTube = isSelected || isHintFrom || isHintTo || isShaking;
+                            tubeWaveAmp = (isActiveTube && motionProfile.waveAnimationEnabled) ? 1.4 : 0.5;
                           }
+
+                          final tubeBubbles = motionProfile.bubblesEnabled && (tube.isNotEmpty || isPourTarget);
 
                           Widget tubeWidget = RepaintBoundary(
                             key: Key('tube_boundary_$index'),
@@ -647,7 +746,9 @@ class _GameBoardState extends ConsumerState<GameBoard>
                                     waveAmplitude: tubeWaveAmp,
                                     enableBubbles: tubeBubbles,
                                     bubbleTime: bubbleTime,
-                                    liquidLevelMultiplier: liquidMultiplier,
+                                    renderUnits: renderUnits,
+                                    topLayerRatio: topLayerRatio,
+                                    elevation: elevation,
                                   ),
                                 ),
                               ),
@@ -661,10 +762,18 @@ class _GameBoardState extends ConsumerState<GameBoard>
                             );
                           }
 
-                          final totalOffsetY = liftOffset + entranceY;
-                          if (shakeOffset != 0.0 || totalOffsetY != 0.0) {
+                          if (tubeScale != 1.0) {
+                            tubeWidget = Transform.scale(
+                              scale: tubeScale,
+                              child: tubeWidget,
+                            );
+                          }
+
+                          final totalDx = shakeOffset + flightDx;
+                          final totalDy = liftOffset + flightDy + entranceY;
+                          if (totalDx != 0.0 || totalDy != 0.0) {
                             tubeWidget = Transform.translate(
-                              offset: Offset(shakeOffset, totalOffsetY),
+                              offset: Offset(totalDx, totalDy),
                               child: tubeWidget,
                             );
                           }
