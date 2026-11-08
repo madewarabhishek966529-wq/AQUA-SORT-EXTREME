@@ -33,6 +33,9 @@ class TubePainter extends CustomPainter {
   final double bubbleTime;
   final double completionProgress; // 0.0 to 1.0 for cap shine sweep
   final double liquidLevelMultiplier; // for drain/fill scaling
+  final List<int>? renderUnits; // Dynamic override during active pour transfer
+  final double topLayerRatio; // 0.0 to 1.0 fractional height of top liquid unit
+  final double elevation; // 0.0 to 1.0 depth factor while flying
 
   // Reusable static Paint objects to eliminate allocations on 120 FPS render ticks
   static final Paint _dropShadowPaint = Paint();
@@ -84,6 +87,9 @@ class TubePainter extends CustomPainter {
     this.bubbleTime = 0.0,
     this.completionProgress = 0.0,
     this.liquidLevelMultiplier = 1.0,
+    this.renderUnits,
+    this.topLayerRatio = 1.0,
+    this.elevation = 0.0,
   })  : theme = theme ?? AquaPalette.ocean,
         skin = skin ?? TubeSkinRegistry.classicGlass;
 
@@ -123,15 +129,18 @@ class TubePainter extends CustomPainter {
       ..lineTo(w, bodyTop)
       ..close();
 
-    // 3. Drop Shadow
+    // 3. Drop Shadow (scales with elevation depth)
+    final shadowOffsetY = 2.5 + elevation * 10.0;
+    final shadowBlur = 4.0 + elevation * 10.0;
     _dropShadowPaint.color = skin.dropShadowColor;
-    _dropShadowPaint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    canvas.drawPath(bodyPath.shift(const Offset(0, 2.5)), _dropShadowPaint);
+    _dropShadowPaint.maskFilter = MaskFilter.blur(BlurStyle.normal, shadowBlur);
+    canvas.drawPath(bodyPath.shift(Offset(0, shadowOffsetY)), _dropShadowPaint);
 
     // 4. Glows (Selection, Valid Destination, Keyboard Focus)
     if (isSelected) {
       final activeGlow = glowColor ?? theme.primaryAccent;
-      _glowPaint.color = activeGlow.withValues(alpha: 0.45);
+      _glowPaint.color = activeGlow.withValues(alpha: 0.55);
+      _glowPaint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
       final glowRect = RRect.fromRectAndCorners(
         Rect.fromLTWH(-4, 0, w + 8, h + 4),
         topLeft: Radius.circular(radius),
@@ -141,7 +150,9 @@ class TubePainter extends CustomPainter {
       );
       canvas.drawRRect(glowRect, _glowPaint);
     } else if (isValidDestination) {
-      _glowPaint.color = theme.secondaryAccent.withValues(alpha: 0.38);
+      final pulse = 0.5 + 0.5 * sin(wavePhase * 0.8);
+      _glowPaint.color = theme.secondaryAccent.withValues(alpha: 0.28 + 0.28 * pulse);
+      _glowPaint.maskFilter = MaskFilter.blur(BlurStyle.normal, 6 + 6 * pulse);
       final validRect = RRect.fromRectAndCorners(
         Rect.fromLTWH(-3, 0, w + 6, h + 3),
         topLeft: Radius.circular(radius),
@@ -152,6 +163,7 @@ class TubePainter extends CustomPainter {
       canvas.drawRRect(validRect, _glowPaint);
     } else if (isFocused) {
       _glowPaint.color = theme.primaryAccent.withValues(alpha: 0.40);
+      _glowPaint.maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
       final focusRect = RRect.fromRectAndCorners(
         Rect.fromLTWH(-3, 0, w + 6, h + 3),
         topLeft: Radius.circular(radius),
@@ -171,7 +183,8 @@ class TubePainter extends CustomPainter {
     canvas.drawPath(bodyPath, _innerShadowPaint);
 
     // 7. Render Liquid Layers
-    if (tube.units.isNotEmpty && liquidLevelMultiplier > 0.0) {
+    final unitsToDraw = renderUnits ?? tube.units;
+    if (unitsToDraw.isNotEmpty && liquidLevelMultiplier > 0.0) {
       canvas.save();
       // Clip strictly inside the tube body
       canvas.clipPath(bodyPath);
@@ -179,8 +192,8 @@ class TubePainter extends CustomPainter {
       final capacity = tube.capacity;
       final unitHeight = (bodyHeight - radius * 0.2) / capacity;
 
-      for (var i = 0; i < tube.units.length; i++) {
-        final colorId = tube.units[i];
+      for (var i = 0; i < unitsToDraw.length; i++) {
+        final colorId = unitsToDraw[i];
         final liquidColor = theme.getLiquidColor(
           colorId,
           colorblind: colorblindPalette,
@@ -188,12 +201,13 @@ class TubePainter extends CustomPainter {
 
         // Compute layer vertical bounds
         final layerBottom = h - (i * unitHeight);
-        var layerTop = layerBottom - unitHeight;
-
-        // Apply scale if dynamic drain/fill
-        if (i == tube.units.length - 1 && liquidLevelMultiplier < 1.0) {
-          layerTop = layerBottom - (unitHeight * liquidLevelMultiplier);
+        var currentUnitHeight = unitHeight;
+        if (i == unitsToDraw.length - 1) {
+          currentUnitHeight = unitHeight * topLayerRatio * liquidLevelMultiplier;
         }
+        final layerTop = layerBottom - currentUnitHeight;
+
+        if (currentUnitHeight <= 0.0) continue;
 
         final liquidRect = Rect.fromLTRB(0, layerTop, w, layerBottom);
 
@@ -227,7 +241,7 @@ class TubePainter extends CustomPainter {
         // C. Layer boundary blending: soft gradient seam between stacked colors
         if (i > 0) {
           final seamRect = Rect.fromLTRB(0, layerBottom - 1.5, w, layerBottom + 1.5);
-          final prevColor = theme.getLiquidColor(tube.units[i - 1], colorblind: colorblindPalette);
+          final prevColor = theme.getLiquidColor(unitsToDraw[i - 1], colorblind: colorblindPalette);
           _seamPaint.shader = LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -247,7 +261,7 @@ class TubePainter extends CustomPainter {
         }
 
         // E. Top surface meniscus & animated wave (only on highest layer)
-        if (i == tube.units.length - 1) {
+        if (i == unitsToDraw.length - 1) {
           _drawSurfaceWave(
             canvas,
             w: w,
@@ -431,7 +445,13 @@ class TubePainter extends CustomPainter {
         oldDelegate.theme.id != theme.id ||
         oldDelegate.skin.id != skin.id ||
         oldDelegate.liquidLevelMultiplier != liquidLevelMultiplier ||
-        oldDelegate.completionProgress != completionProgress) {
+        oldDelegate.completionProgress != completionProgress ||
+        oldDelegate.renderUnits != renderUnits ||
+        oldDelegate.topLayerRatio != topLayerRatio ||
+        oldDelegate.elevation != elevation) {
+      return true;
+    }
+    if (isValidDestination && oldDelegate.wavePhase != wavePhase) {
       return true;
     }
     if (waveAmplitude > 0.0 && oldDelegate.wavePhase != wavePhase) {

@@ -48,6 +48,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
   late final AnimationController _shakeAnimController;
   late final AnimationController _ambientLoopController;
   late final AnimationController _entranceAnimController;
+  late final AnimationController _selectionAnimController;
   late final TransformationController _transformController;
   late final FocusNode _focusNode;
 
@@ -58,6 +59,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
   final Set<int> _completedTubes = {};
 
   PourEvent? _lastHandledPourEvent;
+  int? _prevSelectedTubeIndex;
   int _focusedIndex = 0;
   bool _hasKeyboardFocus = false;
   int _prevMoves = 0;
@@ -98,6 +100,12 @@ class _GameBoardState extends ConsumerState<GameBoard>
         _shakeAnimController.reset();
       }
     });
+
+    // Selection spring lift controller: 220ms
+    _selectionAnimController = AnimationController(
+      vsync: this,
+      duration: MotionTokens.pourSelect,
+    );
 
     // Ambient loop: 14 seconds looping for drifting mesh, surface waves, particle updates
     _ambientLoopController = AnimationController(
@@ -147,6 +155,7 @@ class _GameBoardState extends ConsumerState<GameBoard>
     }
     _pourController.dispose();
     _shakeAnimController.dispose();
+    _selectionAnimController.dispose();
     _ambientLoopController.dispose();
     _entranceAnimController.dispose();
     _transformController.dispose();
@@ -157,8 +166,25 @@ class _GameBoardState extends ConsumerState<GameBoard>
   void _onAmbientTick() {
     if (!mounted) return;
     if (_particlePool.activeCount > 0) {
-      // 120 FPS physics update: EffectsLayer repaints via AnimatedBuilder directly
       _particlePool.update(0.00833);
+    }
+
+    if (_pourController.isAnimating &&
+        _pourController.phase == PourPhase.stream &&
+        _pourController.activeEvent != null &&
+        _particlePool.activeCount < 40) {
+      final event = _pourController.activeEvent!;
+      final toKey = _tubeKeys[event.to];
+      final toBox = toKey?.currentContext?.findRenderObject() as RenderBox?;
+      final boardBox = context.findRenderObject() as RenderBox?;
+      if (toBox != null && boardBox != null && toBox.attached && boardBox.attached) {
+        final toLip = boardBox.globalToLocal(
+          toBox.localToGlobal(Offset(toBox.size.width / 2, 0)),
+        );
+        final theme = ref.read(activeThemePaletteProvider);
+        final color = theme.getLiquidColor(event.color).base;
+        _particlePool.emitPourSplash(toLip, color, 1);
+      }
     }
   }
 
@@ -271,6 +297,39 @@ class _GameBoardState extends ConsumerState<GameBoard>
     if (tubeCount <= 24) return (46.0, 134.0);
     if (tubeCount <= 42) return (40.0, 118.0);
     return (34.0, 102.0); // 50 to 60+ tubes
+  }
+
+  Offset _calculateFlightOffset({
+    required int fromIndex,
+    required int toIndex,
+    required double tubeWidth,
+    required double tubeHeight,
+  }) {
+    final fromKey = _tubeKeys[fromIndex];
+    final toKey = _tubeKeys[toIndex];
+    final fromBox = fromKey?.currentContext?.findRenderObject() as RenderBox?;
+    final toBox = toKey?.currentContext?.findRenderObject() as RenderBox?;
+
+    if (fromBox != null && toBox != null && fromBox.attached && toBox.attached) {
+      final fromPos = fromBox.localToGlobal(Offset.zero);
+      final toPos = toBox.localToGlobal(Offset.zero);
+      final delta = toPos - fromPos;
+
+      // When pouring:
+      // If delta.dx >= 0 (target is to the right):
+      // Hover slightly to upper-left of target mouth, tilting right (+angle)
+      // If delta.dx < 0 (target is to the left):
+      // Hover slightly to upper-right of target mouth, tilting left (-angle)
+      final isRightTarget = delta.dx >= 0;
+      final hoverX = isRightTarget
+          ? delta.dx - tubeWidth * 0.72
+          : delta.dx + tubeWidth * 0.72;
+      final hoverY = delta.dy - tubeHeight * 0.38;
+
+      return Offset(hoverX, hoverY);
+    }
+
+    return Offset(toIndex >= fromIndex ? 24.0 : -24.0, -32.0);
   }
 
   void _checkTubeCompletions(PuzzleState puzzleState, ThemePalette theme, MotionQualityProfile profile) {

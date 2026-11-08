@@ -27,7 +27,7 @@ class PourAnimationController extends ChangeNotifier {
   PourAnimationController({required this.vsync}) {
     _controller = AnimationController(
       vsync: vsync,
-      duration: MotionTokens.pourStream,
+      duration: const Duration(milliseconds: 650),
     );
 
     _controller.addListener(_onTick);
@@ -67,12 +67,13 @@ class PourAnimationController extends ChangeNotifier {
       return;
     }
 
-    // Base duration scales with unit count: 320ms base + 40ms per unit above 1 (max 380ms)
-    final baseDurationMs = (320 + (event.count - 1) * 30).clamp(280, 380);
+    // Rich, readable base duration scaling with unit count:
+    // 620ms base + 50ms per unit above 1 (max 770ms)
+    final baseDurationMs = (620 + (event.count - 1) * 50).clamp(550, 800);
     final speedMultiplier = isUndo ? (1.0 / 1.5) : 1.0; // 1.5x speed on undo
 
     final effectiveMs = (baseDurationMs * intensity * speedMultiplier).round();
-    _controller.duration = Duration(milliseconds: max(80, effectiveMs));
+    _controller.duration = Duration(milliseconds: max(100, effectiveMs));
 
     _phase = PourPhase.lift;
     _controller.forward(from: 0.0);
@@ -101,11 +102,11 @@ class PourAnimationController extends ChangeNotifier {
 
   void _onTick() {
     final v = _controller.value;
-    if (v < 0.18) {
+    if (v < 0.28) {
       _phase = PourPhase.lift;
-    } else if (v < 0.42) {
+    } else if (v < 0.38) {
       _phase = PourPhase.tilt;
-    } else if (v < 0.82) {
+    } else if (v < 0.78) {
       _phase = PourPhase.stream;
     } else {
       _phase = PourPhase.settle;
@@ -113,43 +114,85 @@ class PourAnimationController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Current lift offset in pixels for the pouring source tube.
+  /// Progress (0.0 to 1.0) of bottle flight from home slot to target hover slot.
+  double get flightProgress {
+    if (!isAnimating || _activeEvent == null) return 0.0;
+    final v = _controller.value;
+    if (v < 0.32) {
+      // Traveling from home to target hover slot
+      final t = v / 0.32;
+      return Curves.easeOutCubic.transform(t);
+    } else if (v < 0.76) {
+      // Hovering at target
+      return 1.0;
+    } else {
+      // Returning home
+      final t = (v - 0.76) / 0.24;
+      return 1.0 - MotionTokens.springEase.transform(t);
+    }
+  }
+
+  /// Arc height offset in pixels to give a natural curved flight arc over other tubes.
+  double get flightArcY {
+    if (!isAnimating || _activeEvent == null) return 0.0;
+    final v = _controller.value;
+    if (v < 0.32) {
+      final t = v / 0.32;
+      return -sin(t * pi) * 26.0;
+    } else if (v < 0.76) {
+      return 0.0;
+    } else {
+      final t = (v - 0.76) / 0.24;
+      return -sin(t * pi) * 16.0;
+    }
+  }
+
+  /// Current lift offset in pixels for the pouring source tube (fallback / home lift).
   double get liftOffset {
     if (!isAnimating || _activeEvent == null) return 0.0;
     final v = _controller.value;
 
-    if (v < 0.20) {
+    if (v < 0.24) {
       // Lift with spring ease
-      final t = v / 0.20;
-      return -22.0 * MotionTokens.springEase.transform(t);
-    } else if (v < 0.80) {
+      final t = v / 0.24;
+      return -24.0 * MotionTokens.springEase.transform(t);
+    } else if (v < 0.76) {
       // Maintained elevated height during pour
-      return -22.0;
+      return -24.0;
     } else {
       // Settle back down with bounce
-      final t = (v - 0.80) / 0.20;
-      return -22.0 * (1.0 - MotionTokens.springEase.transform(t));
+      final t = (v - 0.76) / 0.24;
+      return -24.0 * (1.0 - MotionTokens.springEase.transform(t));
     }
   }
 
-  /// Current tilt angle in radians for the pouring source tube.
+  /// Current tilt angle in radians for the pouring source tube (~62 degrees).
   double get tiltAngle {
     if (!isAnimating || _activeEvent == null) return 0.0;
-    final v = _controller.value;
-    final direction = _activeEvent!.to > _activeEvent!.from ? 1.0 : -1.0;
-    const maxTilt = 0.52; // ~30 degrees
+    final direction = _activeEvent!.to >= _activeEvent!.from ? 1.0 : -1.0;
+    return getTiltAngleForDirection(direction);
+  }
 
-    if (v < 0.18) {
+  /// Calculate tilt angle given a specific flight direction sign (+1.0 for right, -1.0 for left).
+  double getTiltAngleForDirection(double direction) {
+    if (!isAnimating || _activeEvent == null) return 0.0;
+    final v = _controller.value;
+    const maxTilt = 1.08; // ~62 degrees for realistic fluid discharge
+
+    if (v < 0.16) {
       return 0.0;
-    } else if (v < 0.42) {
-      // Tilt with overshoot
-      final t = (v - 0.18) / 0.24;
+    } else if (v < 0.35) {
+      // Tilt with juicy overshoot
+      final t = (v - 0.16) / 0.19;
       return direction * maxTilt * MotionTokens.easeOutBack.transform(t);
-    } else if (v < 0.80) {
-      return direction * maxTilt;
+    } else if (v < 0.75) {
+      // Sustained tilt during stream with micro-fluid oscillation
+      final tStream = (v - 0.35) / 0.40;
+      final microWobble = sin(tStream * pi * 4) * 0.025;
+      return direction * (maxTilt + microWobble);
     } else {
       // Return with smooth settle
-      final t = (v - 0.80) / 0.20;
+      final t = (v - 0.75) / 0.25;
       return direction * maxTilt * (1.0 - MotionTokens.springEase.transform(t));
     }
   }
@@ -158,36 +201,36 @@ class PourAnimationController extends ChangeNotifier {
   double get drainProgress {
     if (!isAnimating || _activeEvent == null) return 0.0;
     final v = _controller.value;
-    if (v < 0.40) return 0.0;
-    if (v >= 0.80) return 1.0;
-    return (v - 0.40) / 0.40;
+    if (v < 0.32) return 0.0;
+    if (v >= 0.74) return 1.0;
+    return Curves.easeInOutQuad.transform((v - 0.32) / 0.42);
   }
 
   /// Progress (0.0 to 1.0) of liquid fill in the target tube.
   double get fillProgress {
     if (!isAnimating || _activeEvent == null) return 0.0;
     final v = _controller.value;
-    // Slight fluid travel delay between drain and fill
-    if (v < 0.45) return 0.0;
-    if (v >= 0.82) return 1.0;
-    return (v - 0.45) / 0.37;
+    // Slight fluid flight delay before fill begins
+    if (v < 0.36) return 0.0;
+    if (v >= 0.76) return 1.0;
+    return Curves.easeInOutQuad.transform((v - 0.36) / 0.40);
   }
 
   /// Progress of the connecting fluid stream (0.0 to 1.0).
   double get streamProgress {
     if (!isAnimating || _activeEvent == null) return 0.0;
     final v = _controller.value;
-    if (v < 0.38) return 0.0;
-    if (v > 0.82) return 0.0; // Stream snaps off before settle
+    if (v < 0.28) return 0.0;
+    if (v > 0.78) return 0.0; // Stream snaps off before return
 
-    if (v < 0.45) {
-      // Stream extending
-      return (v - 0.38) / 0.07;
-    } else if (v < 0.76) {
+    if (v < 0.36) {
+      // Stream extending to target
+      return (v - 0.28) / 0.08;
+    } else if (v < 0.70) {
       return 1.0;
     } else {
-      // Stream cutting off
-      return 1.0 - ((v - 0.76) / 0.06);
+      // Stream thinning & cutting off
+      return 1.0 - ((v - 0.70) / 0.08);
     }
   }
 
